@@ -1,0 +1,20 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*private*key*
+keystore/
+state.json
+
+# dependencies / build output
+node_modules/
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# tooling
+.vercel/
+.DS_Store

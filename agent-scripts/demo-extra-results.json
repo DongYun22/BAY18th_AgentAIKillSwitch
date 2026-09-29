@@ -1,0 +1,80 @@
+[
+  {
+    "step": "A",
+    "label": "mintChild(한도 0.01 ETH > 부모 0.003 ETH)",
+    "expected": "revert",
+    "status": 0,
+    "reason": "PolicyExceedsParent",
+    "tx": "0x556e9239b644e833581dcd7563897fd610492e185b04888dbb47a2bef8c8cfcd"
+  },
+  {
+    "step": "B",
+    "label": "Hot Agent에게 child 발급",
+    "expected": "success",
+    "status": 1,
+    "tx": "0x5a91efea0c45a2d232b2b9308c17058ee6782d9ed73c01899b368d5307cf414c"
+  },
+  {
+    "step": "B",
+    "label": "execute(token 4) — freeze 전",
+    "expected": "success",
+    "status": 1,
+    "tx": "0x4e486d3114f93fc6bd2eea3e84c97a1d02c8d3c5d3073c4c11884c4b00033553"
+  },
+  {
+    "step": "B",
+    "label": "freeze(token 4) by Cold",
+    "expected": "success",
+    "status": 1,
+    "tx": "0x0120136c1f23d7ec8da431811086786de133d83997c29e7c1c500199f17babe2"
+  },
+  {
+    "step": "B",
+    "label": "execute(token 4) — freeze 중",
+    "expected": "revert",
+    "status": 0,
+    "reason": "PolicyRejected",
+    "tx": "0x2a69996cc70cad3a45420d5462e9968e458b22baba729d67929c4ca731a09433"
+  },
+  {
+    "step": "B",
+    "label": "unfreeze(token 4) by Cold",
+    "expected": "success",
+    "status": 1,
+    "tx": "0x07a3d88c75cf28d2da188c1e4411517a669fa3e9029ee98f523bdc8291934716"
+  },
+  {
+    "step": "B",
+    "label": "execute(token 4) — unfreeze 후",
+    "expected": "success",
+    "status": 1,
+    "tx": "0xb677bea5c8c163e71991f56eb312dd38641095ed966a43946c1ece581462f2ad"
+  },
+  {
+    "step": "C",
+    "label": "Cold → Hot: child 발급",
+    "expected": "success",
+    "status": 1,
+    "tx": "0xf2619083b9ac0aa5ae1ee94ff46866727deb01a5321aa4b603e2dd28816fa012"
+  },
+  {
+    "step": "C",
+    "label": "Hot → Sub-agent: grandchild 재위임",
+    "expected": "success",
+    "status": 1,
+    "tx": "0x06ef8681c0b0ee15c16f8e0437f26abb8d16831e8d40ca7507a5cdbdcdebb33e"
+  },
+  {
+    "step": "C",
+    "label": "revoke(token 5) by Cold",
+    "expected": "success",
+    "status": 1,
+    "tx": "0x946d8e147c5cfb2bc3eed686dd147217a76eead02038a5eb252fccb920b382a0"
+  },
+  {
+    "step": "C",
+    "label": "revoke 후 isValid(child, grandchild)",
+    "child": false,
+    "grandchild": false
+  }
+]

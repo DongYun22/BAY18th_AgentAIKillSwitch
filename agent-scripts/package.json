@@ -1,0 +1,14 @@
+{
+  "name": "agent-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node setup.js",
+    "normal": "node mockAgentNormal.js",
+    "malicious": "node mockAgentMalicious.js",
+    "watch": "node watcher.js"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4"
+  }
+}
