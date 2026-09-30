@@ -6,9 +6,11 @@
     "setup": "node setup.js",
     "normal": "node mockAgentNormal.js",
     "malicious": "node mockAgentMalicious.js",
-    "watch": "node watcher.js"
+    "watch": "node watcher.js",
+    "llm": "node llmAgent.js"
   },
   "dependencies": {
-    "ethers": "^6.13.4"
+    "ethers": "^6.13.4",
+    "@anthropic-ai/sdk": "^0.110.0"
   }
 }
