@@ -12,4 +12,4 @@ export const config = {
   permit2: '0x000000000022D473030F116dDEE9F6B43aC78BA3',
   fromBlock: readFromBlock(import.meta.env.VITE_FROM_BLOCK),
   logChunk: 50_000,
-}
+} as const
