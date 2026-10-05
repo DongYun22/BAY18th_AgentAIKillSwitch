@@ -67,7 +67,17 @@ npm test
 npm run dev
 ```
 
-브라우저에 나온 주소에서 Cold 지갑을 연결하고, 네트워크는 Sepolia로 둡니다. `npm run build`는 `app/dist`를 만듭니다. 그 폴더는 커밋하지 않습니다.
+브라우저에 나온 주소에서 Cold 지갑을 연결하고, 네트워크는 Sepolia로 둡니다.
+
+지갑 확장이 없으면 목 지갑으로 같은 화면을 엽니다. 목 지갑은 Cold 주소로 로그인하고, Revoke 클릭은 출력만 하며 Sepolia로 보내지 않습니다.
+
+```bash
+cd agent-scripts
+npm install
+npm run mock
+```
+
+앱을 `npm run dev`로 띄운 뒤 http://127.0.0.1:5173/?mock=1 을 열고 Connect를 누릅니다. 터미널에는 트리가 바로 나옵니다. 페이지는 Sepolia 로그를 읽은 뒤에 같은 트리를 그리므로 첫 Connect는 1분 정도 걸릴 수 있습니다. Revoke를 누르면 터미널에 호출 내용이 찍히고, 그 트랜잭션은 Sepolia로 나가지 않습니다. 트리만 보고 끝내려면 `npm run mock -- --once` 입니다. `npm run build`는 `app/dist`를 만듭니다. 그 폴더는 커밋하지 않습니다.
 
 자동 회수(`clearErc20Allowance`)는 소스에는 있습니다. 이미 배포된 AgentWallet `0x0B26…d29F`에는 그 함수가 없습니다. 그 주소로 보낸 실패 실행은 지금 워처가 `PermissionToken.revoke`로 처리합니다. 허용량 자동 회수는 AgentWallet을 다시 배포한 뒤에만 체인에서 실행됩니다. 다시 배포하면 주소가 바뀌므로 `contracts/deployments.json`, `app/src/config.ts`의 `agentWallet`, 그리고 `AGENT_WALLET_ADDRESS`를 함께 바꿉니다.
 

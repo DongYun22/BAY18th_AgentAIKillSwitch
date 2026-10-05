@@ -5,6 +5,7 @@ import { readDelegation } from './delegation7702'
 describe('K-T-8', () => {
   it('returns null for empty code', () => {
     expect(readDelegation('0x')).toBeNull()
+    expect(readDelegation(undefined as unknown as '0x')).toBeNull()
   })
 
   it('returns the zero address for twenty zero bytes', () => {

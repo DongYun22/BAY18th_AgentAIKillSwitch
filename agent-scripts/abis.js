@@ -7,7 +7,7 @@ export const PERMISSION_TOKEN_ABI = [
   "function unfreeze(uint256 tokenId)",
   "function revoke(uint256 tokenId)",
   "function isValid(uint256 tokenId) view returns (bool)",
-  "function getPolicy(uint256 tokenId) view returns (uint256 spendingLimit, address[] allowlist, uint64 expiry)",
+  "function getPolicy(uint256 tokenId) view returns ((uint256 spendingLimit, address[] allowlist, uint64 expiry))",
   "event PermissionMinted(uint256 indexed tokenId, address indexed to, uint256 indexed parentId, uint256 spendingLimit, uint64 expiry)",
   "event PermissionFrozen(uint256 indexed tokenId, address indexed by)",
   "event PermissionRevoked(uint256 indexed tokenId, address indexed by)",

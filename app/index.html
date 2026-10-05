@@ -15,6 +15,11 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      if (new URLSearchParams(location.search).get("mock") === "1") {
+        document.write('<script src="http://127.0.0.1:8787/provider.js"><\/script>')
+      }
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
