@@ -55,6 +55,24 @@ node demoExtra.js    # attenuation 거부, freeze/unfreeze, 연쇄 revoke 실증
 `setup.js`는 `state.json`을 만들고 다른 스크립트가 읽습니다. 스크립트는 같은 폴더에서 실행해야 합니다.
 Mock 에이전트는 실제 LLM이 아니라 정해진 스크립트입니다.
 
+### 앱
+
+연결된 지갑으로 Sepolia를 읽고, 그 지갑이 서명할 수 있는 회수를 보냅니다. 시작 블록은 PermissionToken이 배포된 블록 `11805675`입니다.
+
+```bash
+cd app
+cp .env.example .env
+npm install
+npm test
+npm run dev
+```
+
+브라우저에 나온 주소에서 Cold 지갑을 연결하고, 네트워크는 Sepolia로 둡니다. `npm run build`는 `app/dist`를 만듭니다. 그 폴더는 커밋하지 않습니다.
+
+자동 회수(`clearErc20Allowance`)는 소스에는 있습니다. 이미 배포된 AgentWallet `0x0B26…d29F`에는 그 함수가 없습니다. 그 주소로 보낸 실패 실행은 지금 워처가 `PermissionToken.revoke`로 처리합니다. 허용량 자동 회수는 AgentWallet을 다시 배포한 뒤에만 체인에서 실행됩니다. 다시 배포하면 주소가 바뀌므로 `contracts/deployments.json`, `app/src/config.ts`의 `agentWallet`, 그리고 `AGENT_WALLET_ADDRESS`를 함께 바꿉니다.
+
+ENSv2 역할은 Sepolia ETHRegistry `0xD4eBcbBdF463C9c45784603Db0dDD499BC44A8B4`의 `EACRolesChanged`만 읽습니다. 이름마다 따로 배포된 UserRegistry는 포함하지 않습니다.
+
 ### 대시보드
 
 `dashboard/index.html`을 브라우저로 열거나 정적 서버로 서빙하면 됩니다(서버·빌드 불필요). 배포는 `cd dashboard && npx vercel --prod`.

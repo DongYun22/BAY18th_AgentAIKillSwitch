@@ -1,5 +1,6 @@
 import type { Address } from 'viem'
 import { groupAgents } from './index/agents'
+import { indexEnsRoles } from './index/ensV2'
 import { indexDelegations } from './index/delegation7702'
 import { indexErc20Allowances } from './index/erc20'
 import { indexErc721Operators } from './index/erc721'
@@ -81,8 +82,9 @@ async function load(cold: Address): Promise<void> {
     const erc721 = await indexErc721Operators(client as unknown as ReadClient, addresses)
     const permit2 = await indexPermit2Allowances(client as unknown as ReadClient, addresses)
     const delegations = await indexDelegations(client as unknown as ReadClient, addresses)
+    const ens = await indexEnsRoles(client as unknown as ReadClient, cold, addresses)
     setScreenActions({ sender: bindSender(cold, walletClient(), client) })
-    renderAgents(screenSlot, toScreen(cold, indexed, erc20, erc721, permit2, delegations))
+    renderAgents(screenSlot, toScreen(cold, indexed, erc20, erc721, permit2, delegations, ens))
   } catch {
     const failed = document.createElement('p')
     failed.textContent = 'Index failed'
