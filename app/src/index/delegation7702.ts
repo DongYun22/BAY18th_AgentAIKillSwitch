@@ -2,7 +2,7 @@ import { getAddress, type Address, type Hex } from 'viem'
 import type { Delegation7702, ReadClient } from '../types'
 
 export function readDelegation(code: Hex): Address | null {
-  if (code === '0x' || !code.startsWith('0xef0100')) return null
+  if (typeof code !== 'string' || code === '0x' || !code.startsWith('0xef0100')) return null
   const body = code.slice(8)
   if (body.length !== 40) return null
   return getAddress(`0x${body}`)

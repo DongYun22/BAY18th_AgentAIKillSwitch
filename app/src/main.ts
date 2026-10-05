@@ -89,7 +89,8 @@ async function load(cold: Address): Promise<void> {
     const ens = await indexEnsRoles(client as unknown as ReadClient, cold, addresses)
     setScreenActions({ sender: bindSender(cold, walletClient(), client) })
     renderAgents(screenSlot, toScreen(cold, indexed, erc20, erc721, permit2, delegations, ens))
-  } catch {
+  } catch (error) {
+    console.error(error)
     const failed = document.createElement('p')
     failed.textContent = 'Index failed'
     app.prepend(failed)

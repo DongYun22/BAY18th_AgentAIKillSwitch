@@ -132,7 +132,8 @@ async function main() {
         return { owner: decoded.args.owner, spender: decoded.args.spender, token: item.address };
       });
       const policy = await permissionToken.getPolicy(state.childId);
-      const allowlist = policy.allowlist ?? policy[1];
+      const packed = policy.allowlist ? policy : policy[0];
+      const allowlist = packed.allowlist ?? packed[1] ?? [];
       const allowances = {};
       for (const log of logs) {
         const key = `${log.token}:${log.spender}`;
