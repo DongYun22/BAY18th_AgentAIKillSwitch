@@ -60,10 +60,14 @@ function control(label: string, onClick: () => void): HTMLButtonElement {
 }
 
 async function onConnect(): Promise<void> {
-  const address = await connect()
-  const chainId = await requestChainId()
-  session = { address, chainId }
-  paint()
+  try {
+    const address = await connect()
+    const chainId = await requestChainId()
+    session = { address, chainId }
+    paint()
+  } catch {
+    paint()
+  }
 }
 
 function disconnect(): void {

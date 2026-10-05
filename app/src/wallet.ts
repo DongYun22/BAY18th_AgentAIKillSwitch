@@ -27,7 +27,7 @@ export function shortAddress(address: string): string {
 }
 
 function provider(): EIP1193Provider {
-  const ethereum = window.ethereum
+  const ethereum = globalThis.window?.ethereum
   if (!ethereum) throw new Error('Wrong chain')
   return ethereum
 }
@@ -38,6 +38,7 @@ export async function connect(): Promise<Address> {
 }
 
 export function watchAccount(onChange: (address: Address | null) => void): void {
+  if (!globalThis.window?.ethereum) return
   provider().on('accountsChanged', (accounts: string[]) => {
     if (accounts.length === 0) {
       onChange(null)
