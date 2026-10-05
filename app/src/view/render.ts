@@ -1,5 +1,6 @@
-import type { Address } from 'viem'
+import { getAddress, type Address } from 'viem'
 import { clearDelegation } from '../revoke/delegation7702'
+import { canRevokeEnsRole, revokeEnsRole } from '../revoke/ensV2'
 import { revokeErc20 } from '../revoke/erc20'
 import { revokeErc721 } from '../revoke/erc721'
 import { canRevokePermission, revokePermission } from '../revoke/permissionToken'
@@ -7,6 +8,7 @@ import { revokePermit2 } from '../revoke/permit2'
 import type {
   AgentView,
   Delegation7702,
+  EnsRole,
   Erc20Allowance,
   Erc721Operator,
   IndexedPermissions,
@@ -15,7 +17,7 @@ import type {
   ScreenModel,
   Sender,
 } from '../types'
-import { compareTokenId, sameAddress } from '../types'
+import { compareAddress, compareTokenId, sameAddress } from '../types'
 
 export type ScreenActions = {
   sender: Sender
@@ -34,10 +36,18 @@ export function toScreen(
   erc721: Erc721Operator[],
   permit2: Permit2Allowance[],
   delegations: Delegation7702[],
+  ens: EnsRole[],
 ): ScreenModel {
-  const agents = indexed.groups.map((group) => viewFor(group.agent, group.permissions, erc20, erc721, permit2, delegations))
+  const agents = indexed.groups.map((group) => viewFor(group.agent, group.permissions, erc20, erc721, permit2, delegations, ens))
+  const known = new Set<Address>([getAddress(cold), ...agents.map((agent) => agent.agent)])
+  for (const role of ens) {
+    if (known.has(role.agent)) continue
+    known.add(role.agent)
+    agents.push(viewFor(role.agent, [], erc20, erc721, permit2, delegations, ens))
+  }
+  agents.sort((left, right) => compareAddress(left.agent, right.agent))
   return {
-    account: viewFor(cold, indexed.roots, erc20, erc721, permit2, delegations),
+    account: viewFor(cold, indexed.roots, erc20, erc721, permit2, delegations, ens),
     agents,
   }
 }
@@ -49,6 +59,7 @@ function viewFor(
   erc721: Erc721Operator[],
   permit2: Permit2Allowance[],
   delegations: Delegation7702[],
+  ens: EnsRole[],
 ): AgentView {
   return {
     agent,
@@ -57,6 +68,7 @@ function viewFor(
     erc721: erc721.filter((row) => sameAddress(row.owner, agent)),
     permit2: permit2.filter((row) => sameAddress(row.owner, agent)),
     delegation: delegations.find((row) => sameAddress(row.agent, agent))?.implementation ?? null,
+    ens: ens.filter((row) => sameAddress(row.agent, agent)),
   }
 }
 
@@ -112,6 +124,16 @@ function recordBlock(
   view: AgentView,
   permissions: PermissionRow[],
 ): void {
+  line(root, 'Roles')
+  if (view.ens.length === 0) line(root, 'none')
+  for (const row of view.ens) {
+    line(root, `${row.resource} ${row.agent}`)
+    if (!canRevokeEnsRole(row)) continue
+    button(root, 'Revoke agent', async () => {
+      if (!actions) return
+      await revokeEnsRole(actions.sender, row)
+    })
+  }
   line(root, 'Allowances')
   if (view.erc20.length === 0) line(root, 'none')
   for (const row of view.erc20) approvalRow(root, model, cold, permissions, sameAddress(row.owner, cold), `${row.token} ${row.spender} ${row.amount}`, async () => {

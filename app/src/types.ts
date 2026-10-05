@@ -51,6 +51,14 @@ export type Delegation7702 = {
   implementation: Address
 }
 
+export type EnsRole = {
+  registry: Address
+  resource: bigint
+  agent: Address
+  roleBitmap: bigint
+  revocable: boolean
+}
+
 export type AgentView = {
   agent: Address
   permissions: PermissionRow[]
@@ -58,6 +66,7 @@ export type AgentView = {
   erc721: Erc721Operator[]
   permit2: Permit2Allowance[]
   delegation: Address | null
+  ens: EnsRole[]
 }
 
 export type ScreenModel = {

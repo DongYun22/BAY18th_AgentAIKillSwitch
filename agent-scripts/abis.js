@@ -28,4 +28,8 @@ export const AGENT_WALLET_ABI = [
   "error NotTokenOwner()",
   "error PolicyRejected()",
   "error ExecutionFailed()",
+  "function clearErc20Allowance(uint256 tokenId, address token, address spender)",
+  "event Erc20AllowanceCleared(uint256 indexed tokenId, address indexed token, address indexed spender)",
+  "error NotManager()",
+  "error ClearFailed()",
 ];

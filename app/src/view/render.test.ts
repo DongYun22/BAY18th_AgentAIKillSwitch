@@ -61,6 +61,7 @@ function model(): ScreenModel {
       erc721: [],
       permit2: [],
       delegation: null,
+      ens: [],
     },
     agents: [
       {
@@ -70,6 +71,7 @@ function model(): ScreenModel {
         erc721: [],
         permit2: [],
         delegation: null,
+        ens: [],
       },
     ],
   }
