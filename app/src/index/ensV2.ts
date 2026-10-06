@@ -16,35 +16,54 @@ export async function indexEnsRoles(client: ReadClient, cold: Address, agents: A
     const previous = latest.get(key)
     latest.set(key, previous === undefined ? log : laterLog(previous, log))
   }
-  const rows: EnsRole[] = []
+  const pending: Array<{ resource: bigint; agent: Address; roleBitmap: bigint; mask: bigint }> = []
   for (const log of latest.values()) {
     const roleBitmap = log.args.newRoleBitmap as bigint
     if (roleBitmap === 0n) continue
     const resource = log.args.resource as bigint
     const agent = getAddress(log.args.account as Address)
-    const mask = adminBitmap(roleBitmap)
-    let revocable = false
-    if (mask !== 0n) {
+    pending.push({ resource, agent, roleBitmap, mask: adminBitmap(roleBitmap) })
+  }
+  const coldAccount = getAddress(cold)
+  const revocable = new Map<string, boolean>()
+  const checks = pending.filter((item) => item.mask !== 0n)
+  const width = 64
+  for (let start = 0; start < checks.length; start += width) {
+    const slice = checks.slice(start, start + width)
+    const answers = await Promise.all(slice.map(async (item) => {
+      const key = `${item.resource}:${item.agent}`
       try {
-        revocable = resource === 0n
+        const allowed = item.resource === 0n
           ? (await client.readContract({
               address: ensRegistry,
               abi: ensAbi,
               functionName: 'hasRootRoles',
-              args: [mask, getAddress(cold)],
+              args: [item.mask, coldAccount],
             })) as boolean
           : (await client.readContract({
               address: ensRegistry,
               abi: ensAbi,
               functionName: 'hasRoles',
-              args: [resource, mask, getAddress(cold)],
+              args: [item.resource, item.mask, coldAccount],
             })) as boolean
+        return [key, allowed] as const
       } catch {
-        revocable = false
+        return [key, false] as const
       }
-    }
-    if (!known.has(agent) && !revocable) continue
-    rows.push({ registry: ensRegistry, resource, agent, roleBitmap, revocable })
+    }))
+    for (const [key, allowed] of answers) revocable.set(key, allowed)
+  }
+  const rows: EnsRole[] = []
+  for (const item of pending) {
+    const allowed = revocable.get(`${item.resource}:${item.agent}`) ?? false
+    if (!known.has(item.agent) && !allowed) continue
+    rows.push({
+      registry: ensRegistry,
+      resource: item.resource,
+      agent: item.agent,
+      roleBitmap: item.roleBitmap,
+      revocable: allowed,
+    })
   }
   rows.sort((left, right) => {
     if (left.resource < right.resource) return -1

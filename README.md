@@ -16,14 +16,29 @@ Revoke.cash가 **지갑**의 approval을 점검·회수한다면, 이 프로젝�
 - `AgentWallet.execute`는 `checkPolicy`를 통과해야만 실행됩니다.
 - 킬스위치는 **오프체인 watcher**입니다. Hot Agent가 AgentWallet으로 보낸 실패 tx를 블록마다 감지해 Cold 키로 `revoke`를 호출합니다.
 
+실패한 거래가 권한을 소각한다.
+
+![실패한 거래가 권한을 소각한다](docs/diagrams/killswitch_01_failed-tx-revoke.png)
+
+회수는 두 가지다. 권한 토큰을 소각하는 호출과, 허용량을 0으로 만드는 호출은 다르다.
+
+![두 revoke는 다른 호출이다](docs/diagrams/killswitch_02_two-revokes.png)
+
+자동 회수에는 막힌 호출이 먼저 있다. 손 회수에는 그 전에 막힌 호출이 없다.
+
+![자동 회수에는 막힌 호출이 먼저 있다](docs/diagrams/killswitch_04_blocked-first.png)
+
+화면의 자동 줄은 두 문장이다. Hot Agent가 허용 목록 밖 주소에 쓰려다 막혔고, 워처가 2초 뒤에 그 권한을 소각했다. 손 회수 줄은 오너가 직접 소각했고, 그 전에 막힌 호출은 없다고 적는다.
+
 ## 폴더 구조
 
 | 폴더 | 내용 |
 |---|---|
 | [`contracts/`](contracts) | Foundry 프로젝트. `PermissionToken.sol`, `AgentWallet.sol`, 배포 스크립트, 테스트, `deployments.json` |
-| [`agent-scripts/`](agent-scripts) | Node.js(ethers v6). `setup.js`, `mockAgentNormal.js`, `mockAgentMalicious.js`, `watcher.js`, `demoExtra.js`, `abis.js`, 실증 결과 `demo-extra-results.json` |
+| [`app/`](app) | 연결된 지갑의 권한 화면. 회수 버튼, 막힌 이유, 히스토리 |
+| [`agent-scripts/`](agent-scripts) | Node.js(ethers v6). 셋업, 목 에이전트, 워처, 목 지갑, 시나리오 재생 |
 | [`dashboard/`](dashboard) | 정적 대시보드(`index.html`). Blockscout Sepolia API의 tx를 재생해 트리·상태·로그를 표시. 빌드 없음 |
-| [`docs/`](docs) | 아티클 원고(작성 중) |
+| [`docs/`](docs) | 아티클 원고와 화면 설명 그림 |
 
 ## 실행법
 
@@ -69,17 +84,25 @@ npm run dev
 
 브라우저에 나온 주소에서 Cold 지갑을 연결하고, 네트워크는 Sepolia로 둡니다.
 
-지갑 확장이 없으면 목 지갑으로 같은 화면을 엽니다. 목 지갑은 Cold 주소로 로그인하고, Revoke 클릭은 출력만 하며 Sepolia로 보내지 않습니다.
+지갑 확장이 없으면 목 지갑으로 같은 화면을 엽니다.
+
+예전 Cold 계정과 Sepolia에 이미 있는 권한을 보려면 `npm run mock`입니다. 페이지가 그 로그를 읽으므로 첫 Connect는 1분 정도 걸릴 수 있습니다. `npm run qa`는 그 계정 위에 허용량, 오퍼레이터, Permit2, 역할, FROZEN 권한을 얹습니다. 체인에는 기록하지 않습니다. 트리만 보고 끝내려면 `npm run mock -- --once` 입니다.
+
+새 계정에서 막힌 호출과 회수가 순서대로 나오게 하려면, 페이지를 연 채로 시나리오를 재생합니다.
 
 ```bash
 cd agent-scripts
 npm install
-npm run mock
+npm run scene
 ```
 
-앱을 `npm run dev`로 띄운 뒤 http://127.0.0.1:5173/?mock=1 을 열고 Connect를 누릅니다. 터미널에는 트리가 바로 나옵니다. 페이지는 Sepolia 로그를 읽은 뒤에 같은 트리를 그리므로 첫 Connect는 1분 정도 걸릴 수 있습니다. Revoke를 누르면 터미널에 호출 내용이 찍히고, 그 트랜잭션은 Sepolia로 나가지 않습니다. 트리만 보고 끝내려면 `npm run mock -- --once` 입니다. `npm run build`는 `app/dist`를 만듭니다. 그 폴더는 커밋하지 않습니다.
+다른 터미널에서 앱을 `npm run dev`로 띄운 뒤 http://127.0.0.1:5173/?mock=1 을 열고 Connect를 누릅니다. 그다음 `npm run scenario`입니다. 재생 중에 페이지를 새로고침하지 않습니다. 순서는 권한 활성, 허용 목록 밖 호출이 막힘, 2초 뒤 자동 소각, 오너의 손 회수입니다.
 
-자동 회수(`clearErc20Allowance`)는 소스에는 있습니다. 이미 배포된 AgentWallet `0x0B26…d29F`에는 그 함수가 없습니다. 그 주소로 보낸 실패 실행은 지금 워처가 `PermissionToken.revoke`로 처리합니다. 허용량 자동 회수는 AgentWallet을 다시 배포한 뒤에만 체인에서 실행됩니다. 다시 배포하면 주소가 바뀌므로 `contracts/deployments.json`, `app/src/config.ts`의 `agentWallet`, 그리고 `AGENT_WALLET_ADDRESS`를 함께 바꿉니다.
+Revoke를 누르면 터미널에 호출이 찍히고, 그 트랜잭션은 Sepolia로 나가지 않습니다. `npm run llm`은 별도 키와 브로드캐스트가 필요해서 이 재생에는 쓰지 않습니다. `npm run build`는 `app/dist`를 만듭니다. 그 폴더는 커밋하지 않습니다.
+
+자동 회수(`clearErc20Allowance`)는 소스에는 있습니다. 이미 배포된 AgentWallet `0x0B26…d29F`에는 그 함수가 없습니다. 그 주소로 보낸 실패 실행은 지금 워처가 `PermissionToken.revoke`로 처리합니다. 아래 그림의 오른쪽은 허용량을 0으로 만드는 자동 회수입니다. 배포된 지갑은 그 경로 대신 권한 토큰을 소각합니다. 허용량 자동 회수는 AgentWallet을 다시 배포한 뒤에만 체인에서 실행됩니다. 다시 배포하면 주소가 바뀌므로 `contracts/deployments.json`, `app/src/config.ts`의 `agentWallet`, 그리고 `AGENT_WALLET_ADDRESS`를 함께 바꿉니다.
+
+![클릭과 자동이 한 화면이다](docs/diagrams/killswitch_03_click-and-auto.png)
 
 ENSv2 역할은 Sepolia ETHRegistry `0xD4eBcbBdF463C9c45784603Db0dDD499BC44A8B4`의 `EACRolesChanged`만 읽습니다. 이름마다 따로 배포된 UserRegistry는 포함하지 않습니다.
 

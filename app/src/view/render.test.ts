@@ -1,7 +1,7 @@
 import { getAddress } from 'viem'
 import { describe, expect, it } from 'vitest'
 import type { PermissionRow, ScreenModel } from '../types'
-import { renderAgents } from './render'
+import { renderAgents, setWatchEvents } from './render'
 
 const cold = getAddress('0xB6AF02FeEA21e2960A7C14FAf97bAdbE2E982836')
 const hot = getAddress('0x67f49213ae30080250467bbc2fc9495f9c58dca8')
@@ -37,6 +37,17 @@ class NodeEl {
     walk(this)
     return found
   }
+}
+
+function collected(node: NodeEl): string {
+  const titles: string[] = []
+  const walk = (current: NodeEl): void => {
+    const titled = current as NodeEl & { title?: string }
+    if (titled.title) titles.push(titled.title)
+    current.children.forEach(walk)
+  }
+  walk(node)
+  return `${node.textContent}\n${titles.join('\n')}`
 }
 
 function installDocument(): void {
@@ -83,7 +94,7 @@ describe('K-T-9', () => {
   it('shows the agent, ACTIVE, the spender, and the two warnings', () => {
     const root = new NodeEl('div') as unknown as HTMLElement
     renderAgents(root, model())
-    const text = (root as unknown as NodeEl).textContent
+    const text = collected(root as unknown as NodeEl)
     expect(text).toContain(hot)
     expect(text).toContain('ACTIVE')
     expect(text).toContain(spender)
@@ -95,7 +106,7 @@ describe('K-T-9', () => {
   it('shows Account and No agents for an empty list', () => {
     const root = new NodeEl('div') as unknown as HTMLElement
     renderAgents(root, { ...model(), agents: [] })
-    const text = (root as unknown as NodeEl).textContent
+    const text = collected(root as unknown as NodeEl)
     expect(text).toContain('Account')
     expect(text).toContain('No agents for this account')
   })
@@ -111,11 +122,59 @@ describe('K-T-10', () => {
   })
 })
 
+describe('revoke history', () => {
+  it('keeps a revoked allowance on the row and drops its button', () => {
+    const root = new NodeEl('div') as unknown as HTMLElement
+    const screen = model()
+    screen.agents[0].erc20.push({ owner: hot, token, spender, amount: 9n, revoked: true })
+    screen.account.delegation = spender
+    screen.account.delegationRevoked = true
+    renderAgents(root, screen)
+    const text = collected(root as unknown as NodeEl)
+    expect(text).toContain(`${token} ${spender} 9`)
+    expect(text).toContain('REVOKED')
+    expect(text).toContain(spender)
+    const labels = (root as unknown as NodeEl).querySelectorAll('button').map((node) => node.textContent)
+    expect(labels.filter((label) => label === 'Revoke')).toEqual(['Revoke'])
+  })
+})
+
+describe('auto response', () => {
+  it('shows the blocked target on the revoked permission', () => {
+    const root = new NodeEl('div') as unknown as HTMLElement
+    const screen = model()
+    screen.agents[0].permissions[0].status = 'REVOKED'
+    setWatchEvents([
+      {
+        level: 'EXEC',
+        actor: 'Hot Agent',
+        detail: 'P#2 → 0x00000000000000000000000000000000000000b1 · 0.0001 ETH',
+        note: 'target not in allowlist',
+        result: 'BLOCKED',
+        seconds: null,
+      },
+      {
+        level: 'KILL',
+        actor: 'Owner',
+        detail: 'Permission #2 revoke',
+        note: '',
+        result: 'REVOKED',
+        seconds: 2,
+      },
+    ])
+    renderAgents(root, screen)
+    const text = collected(root as unknown as NodeEl)
+    expect(text).toContain('That address is not on the allowlist, so the call was blocked.')
+    expect(text).toContain('The watcher revoked this permission 2s later.')
+    setWatchEvents([])
+  })
+})
+
 describe('K-T-11', () => {
   it('shows the warnings and Revoke agent for an allowance cold does not own', () => {
     const root = new NodeEl('div') as unknown as HTMLElement
     renderAgents(root, model())
-    const text = (root as unknown as NodeEl).textContent
+    const text = collected(root as unknown as NodeEl)
     expect(text).toContain('This approval stays until the agent key signs.')
     expect(text).toContain('Revoking the agent does not clear this approval.')
     expect(text).toContain('Revoke agent')

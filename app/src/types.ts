@@ -29,6 +29,7 @@ export type Erc20Allowance = {
   token: Address
   spender: Address
   amount: bigint
+  revoked?: boolean
 }
 
 export type Erc721Operator = {
@@ -36,6 +37,7 @@ export type Erc721Operator = {
   token: Address
   operator: Address
   approved: true
+  revoked?: boolean
 }
 
 export type Permit2Allowance = {
@@ -44,6 +46,7 @@ export type Permit2Allowance = {
   spender: Address
   amount: bigint
   expiration: bigint
+  revoked?: boolean
 }
 
 export type Delegation7702 = {
@@ -57,6 +60,7 @@ export type EnsRole = {
   agent: Address
   roleBitmap: bigint
   revocable: boolean
+  revoked?: boolean
 }
 
 export type AgentView = {
@@ -66,6 +70,7 @@ export type AgentView = {
   erc721: Erc721Operator[]
   permit2: Permit2Allowance[]
   delegation: Address | null
+  delegationRevoked?: boolean
   ens: EnsRole[]
 }
 

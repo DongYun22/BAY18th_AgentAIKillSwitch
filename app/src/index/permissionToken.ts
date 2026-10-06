@@ -41,12 +41,18 @@ export async function indexPermissions(client: ReadClient, cold: Address): Promi
   const checksumCold = getAddress(cold)
   const latest = await client.getBlock({ blockTag: 'latest' })
   const logs = await scanLogs(client, permissionTokenAbi[0], undefined, config.permissionToken)
+  const coldRoots = new Set<string>()
+  for (const log of logs) {
+    const parentId = log.args.parentId as bigint
+    const to = getAddress(log.args.to as Address)
+    if (parentId === 0n && to === checksumCold) coldRoots.add((log.args.tokenId as bigint).toString())
+  }
   const rows: PermissionRow[] = []
   for (const log of logs) {
     const tokenId = log.args.tokenId as bigint
     const to = getAddress(log.args.to as Address)
     const parentId = log.args.parentId as bigint
-    const keep = await canManage(client, checksumCold, parentId, to)
+    const keep = await canManage(client, checksumCold, parentId, to, coldRoots)
     if (!keep) continue
     const policy = await readPolicy(client, tokenId)
     const status = await statusOf(client, tokenId, policy.expiry, latest.timestamp)
@@ -63,7 +69,13 @@ export async function indexPermissions(client: ReadClient, cold: Address): Promi
   return rows
 }
 
-async function canManage(client: ReadClient, cold: Address, parentId: bigint, to: Address): Promise<boolean> {
+async function canManage(
+  client: ReadClient,
+  cold: Address,
+  parentId: bigint,
+  to: Address,
+  coldRoots: Set<string>,
+): Promise<boolean> {
   if (parentId === 0n) return to === cold
   try {
     const owner = await client.readContract({
@@ -74,7 +86,7 @@ async function canManage(client: ReadClient, cold: Address, parentId: bigint, to
     })
     return getAddress(owner as Address) === cold
   } catch {
-    return false
+    return coldRoots.has(parentId.toString())
   }
 }
 
