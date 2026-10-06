@@ -11,7 +11,7 @@ import { assertChain } from '../wallet'
 const zeroAddress = getAddress('0x0000000000000000000000000000000000000000')
 
 type AuthSender = Sender & {
-  signAuthorization?: (args: { contractAddress: Address }) => Promise<{ contractAddress: Address }>
+  signAuthorization?: (args: { contractAddress: Address }) => Promise<{ address: Address }>
   sendTransaction?: (args: {
     authorizationList: unknown[]
     to: Address
@@ -50,8 +50,18 @@ export function bindSender(account: Address, wallet: WalletClient, client: Publi
     async signAuthorization(args) {
       sender.authCalls = (sender.authCalls ?? 0) + 1
       sender.lastContract = args.contractAddress
-      await wallet.signAuthorization({ account, contractAddress: args.contractAddress })
-      return { contractAddress: args.contractAddress }
+      const ethereum = globalThis.window?.ethereum as { isMock?: boolean } | undefined
+      if (ethereum?.isMock === true) {
+        return {
+          address: args.contractAddress,
+          chainId: 11155111,
+          nonce: 0,
+          r: '0x0000000000000000000000000000000000000000000000000000000000000001',
+          s: '0x0000000000000000000000000000000000000000000000000000000000000001',
+          yParity: 0,
+        }
+      }
+      return wallet.signAuthorization({ account, contractAddress: args.contractAddress })
     },
     async sendTransaction(args) {
       return wallet.sendTransaction({
@@ -75,7 +85,7 @@ export function trackAuth(base: Sender): AuthSender {
     async signAuthorization(args) {
       sender.authCalls = (sender.authCalls ?? 0) + 1
       sender.lastContract = args.contractAddress
-      return { contractAddress: args.contractAddress }
+      return { address: args.contractAddress }
     },
     async sendTransaction() {
       return '0xabc'

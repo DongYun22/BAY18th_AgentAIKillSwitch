@@ -86,6 +86,25 @@ describe('K-T-3', () => {
     ])
   })
 
+  it('keeps children after the cold root is revoked', async () => {
+    const rows = await indexPermissions(
+      client({
+        logs: [mint(1n, cold, 0n), mint(2n, hot, 1n)],
+        owners: { '1': 'revert', '2': hot },
+        policies: {
+          '1': { spendingLimit: 5n, allowlist: [], expiry: 5_000n },
+          '2': { spendingLimit: 4n, allowlist: [], expiry: 5_000n },
+        },
+        valid: { '2': true },
+        timestamp: 1_000n,
+      }),
+      cold,
+    )
+    expect(rows.map((row) => row.tokenId)).toEqual([1n, 2n])
+    expect(rows[0]?.status).toBe('REVOKED')
+    expect(rows[1]?.status).toBe('ACTIVE')
+  })
+
   it('drops a mint whose parent owner is someone else', async () => {
     const rows = await indexPermissions(
       client({

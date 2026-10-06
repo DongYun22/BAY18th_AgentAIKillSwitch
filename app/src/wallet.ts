@@ -54,7 +54,11 @@ export async function requestChainId(): Promise<number> {
 }
 
 export function publicClient(): PublicClient {
-  return createPublicClient({ chain: sepolia, transport: custom(provider()) })
+  return createPublicClient({
+    chain: sepolia,
+    transport: custom(provider()),
+    batch: { multicall: { batchSize: 8192, wait: 0 } },
+  })
 }
 
 export function walletClient(): WalletClient {

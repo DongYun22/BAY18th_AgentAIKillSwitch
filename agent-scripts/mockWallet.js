@@ -11,6 +11,9 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { ethers } from "ethers";
 import { PERMISSION_TOKEN_ABI } from "./abis.js";
+import { runAuto, runExisting, watchEvents } from "./demoRuns.js";
+import { checklist, clearedCode, noteCaptured, overrideCall, qaCall, qaCode, qaLogs } from "./qaFixtures.js";
+import { SCENE_AGENT, SCENE_OWNER, playScenario, sceneBlock, sceneCall, sceneCode, sceneEvents, sceneHead, sceneLogs, sceneRevision, stageOpen } from "./scenarioBook.js";
 
 export const COLD = "0xB6AF02FeEA21e2960A7C14FAf97bAdbE2E982836";
 export const PERMISSION_TOKEN = "0xA09511600787d4BF40A49CE3501af2C23d737584";
@@ -19,12 +22,18 @@ export const PORT = 8787;
 
 const RPC_URL = process.env.RPC_URL || "https://sepolia.gateway.tenderly.co";
 const REVOKE = new ethers.Interface(["function revoke(uint256 tokenId)"]);
+const AGGREGATE = new ethers.Interface([
+  "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[])",
+]);
 const captured = [];
 const readCache = new Map();
 const readSlots = [];
 let readsActive = 0;
 let captureCount = 0;
 let announcedRead = false;
+const qa = process.argv.includes("--qa");
+const scene = process.argv.includes("--scene");
+const ACCOUNT = scene ? SCENE_OWNER : COLD;
 
 export function describeSend(tx) {
   const data = tx?.data ?? "0x";
@@ -50,7 +59,7 @@ function receipt(hash) {
     transactionIndex: "0x0",
     blockHash: ethers.ZeroHash,
     blockNumber: "0x1",
-    from: COLD,
+    from: ACCOUNT,
     to: found.tx.to ?? null,
     cumulativeGasUsed: "0x0",
     gasUsed: "0x0",
@@ -134,6 +143,63 @@ async function fetchUpstream(body, key) {
   return { jsonrpc: "2.0", id: body.id, error: { code: -32000, message: "rate limit exceeded" } };
 }
 
+function localCall(tx) {
+  const overridden = overrideCall(tx);
+  if (overridden === "revert") return { kind: "revert" };
+  if (overridden) return { kind: "ok", data: overridden };
+  if (scene) {
+    const answered = sceneCall(tx);
+    if (answered === "revert") return { kind: "revert" };
+    if (answered) return { kind: "ok", data: answered };
+  }
+  if (qa) {
+    const answered = qaCall(tx);
+    if (answered) return { kind: "ok", data: answered };
+  }
+  return null;
+}
+
+async function answerAggregate(body) {
+  const tx = body.params?.[0];
+  const data = tx?.data;
+  if (typeof data !== "string" || !data.startsWith("0x82ad56cb")) return null;
+  let parsed;
+  try {
+    parsed = AGGREGATE.parseTransaction({ data });
+  } catch {
+    return null;
+  }
+  const calls = parsed.args[0];
+  const locals = calls.map((call) => localCall({ to: call.target, data: call.callData }));
+  if (locals.every((item) => item === null)) return null;
+  const results = [];
+  for (let index = 0; index < calls.length; index += 1) {
+    const local = locals[index];
+    if (local?.kind === "revert") {
+      results.push({ success: false, returnData: "0x" });
+      continue;
+    }
+    if (local?.kind === "ok") {
+      results.push({ success: true, returnData: local.data });
+      continue;
+    }
+    const call = calls[index];
+    const upstream = await forward({
+      jsonrpc: "2.0",
+      id: body.id,
+      method: "eth_call",
+      params: [{ to: call.target, data: call.callData }, body.params?.[1] ?? "latest"],
+    });
+    if (upstream.error) results.push({ success: false, returnData: upstream.error.data ?? "0x" });
+    else results.push({ success: true, returnData: upstream.result ?? "0x" });
+  }
+  return {
+    jsonrpc: "2.0",
+    id: body.id,
+    result: AGGREGATE.encodeFunctionResult("aggregate3", [results]),
+  };
+}
+
 async function rpc(body) {
   const method = body.method;
   if (method === "eth_sendTransaction" || method === "eth_sendRawTransaction") {
@@ -141,6 +207,7 @@ async function rpc(body) {
     const hash = fakeHash();
     const line = describeSend(tx);
     captured.push({ hash, tx, line });
+    noteCaptured(tx);
     console.log(`[mock wallet] captured ${line}`);
     console.log("[mock wallet] not broadcast");
     return { jsonrpc: "2.0", id: body.id, result: hash };
@@ -158,7 +225,7 @@ async function rpc(body) {
         id: body.id,
         result: {
           hash,
-          from: COLD,
+          from: ACCOUNT,
           to: found.tx.to ?? null,
           input: found.tx.data ?? "0x",
           nonce: "0x0",
@@ -180,11 +247,55 @@ async function rpc(body) {
   if (method === "eth_gasPrice" || method === "eth_maxFeePerGas" || method === "eth_maxPriorityFeePerGas") {
     return { jsonrpc: "2.0", id: body.id, result: "0x3B9ACA00" };
   }
+  if (method === "eth_call") {
+    const aggregated = await answerAggregate(body);
+    if (aggregated) return aggregated;
+    const overridden = overrideCall(body.params?.[0]);
+    if (overridden === "revert") {
+      return { jsonrpc: "2.0", id: body.id, error: { code: 3, message: "execution reverted" } };
+    }
+    if (overridden) return { jsonrpc: "2.0", id: body.id, result: overridden };
+    if (scene) {
+      const answered = sceneCall(body.params?.[0]);
+      if (answered === "revert") {
+        return { jsonrpc: "2.0", id: body.id, error: { code: 3, message: "execution reverted" } };
+      }
+      if (answered) return { jsonrpc: "2.0", id: body.id, result: answered };
+    }
+    if (qa) {
+      const answered = qaCall(body.params?.[0]);
+      if (answered) return { jsonrpc: "2.0", id: body.id, result: answered };
+    }
+  }
+  if (method === "eth_getCode") {
+    const cleared = clearedCode(body.params?.[0]);
+    if (cleared) return { jsonrpc: "2.0", id: body.id, result: cleared };
+    if (scene) {
+      const code = sceneCode(body.params?.[0]);
+      if (code) return { jsonrpc: "2.0", id: body.id, result: code };
+    }
+    if (qa) {
+      const code = qaCode(body.params?.[0]);
+      if (code) return { jsonrpc: "2.0", id: body.id, result: code };
+    }
+  }
+  if (scene && method === "eth_getLogs") {
+    return { jsonrpc: "2.0", id: body.id, result: sceneLogs(body.params?.[0] ?? {}) };
+  }
+  if (scene && method === "eth_blockNumber") {
+    return { jsonrpc: "2.0", id: body.id, result: ethers.toQuantity(sceneHead()) };
+  }
+  if (scene && method === "eth_getBlockByNumber") {
+    return { jsonrpc: "2.0", id: body.id, result: sceneBlock() };
+  }
   if (!announcedRead && (method === "eth_getLogs" || method === "eth_call" || method === "eth_blockNumber")) {
     announcedRead = true;
     console.log("[mock wallet] page is reading Sepolia");
   }
   const result = await forward(body);
+  if (qa && method === "eth_getLogs" && Array.isArray(result.result)) {
+    return { ...result, result: result.result.concat(qaLogs(body.params?.[0] ?? {})) };
+  }
   if (result.error && result.error.message !== "execution reverted") {
     console.error(`[mock wallet] ${method} ${result.error.message}`);
   }
@@ -192,11 +303,12 @@ async function rpc(body) {
 }
 
 const providerSource = `window.ethereum = {
+  isMock: true,
   async request(args) {
     const method = args.method
     const params = args.params || []
     if (method === "eth_requestAccounts" || method === "eth_accounts") {
-      return ["${COLD}"]
+      return ["${ACCOUNT}"]
     }
     if (method === "eth_chainId") return "0xaa36a7"
     if (method === "wallet_switchEthereumChain") return null
@@ -232,6 +344,44 @@ function startBridge() {
     if (req.url === "/provider.js") {
       res.writeHead(200, { "content-type": "text/javascript" });
       res.end(providerSource);
+      return;
+    }
+    if (req.method === "GET" && req.url === "/demo/rev") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ revision: scene ? sceneRevision() : 0 }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/demo/log") {
+      const events = scene ? sceneEvents() : qa ? watchEvents() : [];
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(events));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/scenario") {
+      if (!scene) {
+        res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
+        res.end("npm run scene 으로 목 지갑을 다시 켜 주세요.\n");
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      const write = (line) => {
+        console.log(line.trimEnd());
+        res.write(line);
+      };
+      await playScenario(write);
+      res.end();
+      return;
+    }
+    if (req.method === "POST" && (req.url === "/demo/existing" || req.url === "/demo/auto")) {
+      if (!qa) {
+        res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
+        res.end("npm run qa 로 목 지갑을 다시 켜 주세요.\n");
+        return;
+      }
+      const text = req.url === "/demo/existing" ? runExisting() : runAuto();
+      console.log(`\n${text}\n`);
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      res.end(`${text}\n`);
       return;
     }
     const chunks = [];
@@ -346,10 +496,27 @@ async function printTree() {
 
 async function main() {
   const once = process.argv.includes("--once");
+  if (scene) stageOpen();
   await startBridge();
-  console.log("Mock wallet is the cold account. No private key is loaded.");
-  console.log("Open http://127.0.0.1:5173/?mock=1 and click Connect.");
-  console.log("A Revoke click is printed here and is not sent to Sepolia.");
+  if (scene) {
+    console.log("Mock wallet is a new account. No private key is loaded.");
+    console.log(`Owner ${SCENE_OWNER}`);
+    console.log(`Hot Agent ${SCENE_AGENT}`);
+    console.log("Old Sepolia history for the previous cold wallet is not read.");
+    console.log("Open http://127.0.0.1:5173/?mock=1 and click Connect.");
+    console.log("Connect first. The agent starts ACTIVE.");
+    console.log("Then: npm run scenario");
+    console.log("Leave the page open. The revoke shows on the row while the script runs.");
+  } else {
+    console.log("Mock wallet is the cold account. No private key is loaded.");
+    console.log("Open http://127.0.0.1:5173/?mock=1 and click Connect.");
+    console.log("A Revoke click is printed here and is not sent to Sepolia.");
+  }
+  if (qa) {
+    console.log("QA fixtures are on. They are not written to Sepolia.");
+    for (const line of checklist) console.log(line);
+  }
+  if (scene) return;
   if (once) {
     await printTree();
     process.exit(0);
