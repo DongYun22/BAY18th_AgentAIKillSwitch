@@ -360,7 +360,7 @@ function startBridge() {
     if (req.method === "POST" && req.url === "/scenario") {
       if (!scene) {
         res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-        res.end("npm run scene 으로 목 지갑을 다시 켜 주세요.\n");
+        res.end("Restart the mock wallet with npm run scene.\n");
         return;
       }
       res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
@@ -375,7 +375,7 @@ function startBridge() {
     if (req.method === "POST" && (req.url === "/demo/existing" || req.url === "/demo/auto")) {
       if (!qa) {
         res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-        res.end("npm run qa 로 목 지갑을 다시 켜 주세요.\n");
+        res.end("Restart the mock wallet with npm run qa.\n");
         return;
       }
       const text = req.url === "/demo/existing" ? runExisting() : runAuto();
