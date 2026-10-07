@@ -18,6 +18,10 @@ const RPC_URL = process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.
 const COLD_PRIVATE_KEY = process.env.COLD_PRIVATE_KEY;
 const HOT_AGENT_ADDRESS = process.env.HOT_AGENT_ADDRESS;
 const PERMISSION_TOKEN_ADDRESS = process.env.PERMISSION_TOKEN_ADDRESS;
+// V2: register AgentWallet as this tree's guardian so it can freeze on a violation in the same tx.
+// Set GUARDIAN=0 to skip (V1 behaviour: violations just revert).
+const AGENT_WALLET_ADDRESS = process.env.AGENT_WALLET_ADDRESS;
+const USE_GUARDIAN = process.env.GUARDIAN !== "0";
 
 // Demo-only placeholder addresses — never funded/controlled, just used as `target` values so
 // the allowlist check has something concrete to allow or reject. A call with empty calldata
@@ -60,12 +64,31 @@ async function main() {
     allowlist: [MERCHANT_ADDRESS],
     expiry: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
   };
-  console.log("\n[1/2] Root 토큰 발급 중...");
+  console.log("\n[1/3] Root 토큰 발급 중...");
   let tx = await permissionToken.mintRoot(rootPolicy);
   console.log("  tx:", tx.hash);
   let receipt = await tx.wait();
   const rootId = extractTokenId(permissionToken, receipt);
   console.log("  Root tokenId:", rootId.toString());
+
+  // 1.5) V2 guardian — AgentWallet may freeze tokens of this tree on a policy violation.
+  let guardian = null;
+  console.log("\n[2/3] Guardian 등록 (V2 온체인 즉시 정지)...");
+  if (!USE_GUARDIAN) {
+    console.log("  GUARDIAN=0 — 건너뜀 (V1 동작: 위반 시 revert만)");
+  } else if (!AGENT_WALLET_ADDRESS) {
+    console.log("  AGENT_WALLET_ADDRESS가 없어 건너뜀");
+  } else {
+    try {
+      tx = await permissionToken.setGuardian(rootId, AGENT_WALLET_ADDRESS);
+      console.log("  tx:", tx.hash);
+      await tx.wait();
+      guardian = AGENT_WALLET_ADDRESS;
+      console.log("  guardian:", guardian);
+    } catch (e) {
+      console.log("  등록 실패 — V1 컨트랙트일 수 있습니다 (setGuardian 없음):", e.shortMessage || e.message);
+    }
+  }
 
   // 2) Child token — narrower policy, delegated to the Hot Agent address.
   const childPolicy = {
@@ -73,7 +96,7 @@ async function main() {
     allowlist: [MERCHANT_ADDRESS],
     expiry: Math.floor(Date.now() / 1000) + 1 * 24 * 3600,
   };
-  console.log("\n[2/2] Child 토큰 발급 중 (Hot Agent에게 위임)...");
+  console.log("\n[3/3] Child 토큰 발급 중 (Hot Agent에게 위임)...");
   tx = await permissionToken.mintChild(HOT_AGENT_ADDRESS, rootId, childPolicy);
   console.log("  tx:", tx.hash);
   receipt = await tx.wait();
@@ -86,6 +109,7 @@ async function main() {
     hotAgent: HOT_AGENT_ADDRESS,
     merchant: MERCHANT_ADDRESS,
     attackerTarget: ATTACKER_TARGET,
+    guardian,
   };
   fs.writeFileSync("state.json", JSON.stringify(state, null, 2));
   console.log("\nstate.json 저장 완료:", state);

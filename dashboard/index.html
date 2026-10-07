@@ -43,6 +43,12 @@
 
   /* tree */
   .tree { display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.5; }
+  /* 트리가 길어져도 페이지가 늘어나지 않도록 내부에서 스크롤 */
+  #tree { max-height: 45vh; overflow-y: auto; overflow-x: hidden; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+  #tree::-webkit-scrollbar { width: 6px; }
+  #tree::-webkit-scrollbar-thumb { background: var(--accent); }
+  #tree::-webkit-scrollbar-track { background: transparent; }
+  #tree > * { flex-shrink: 0; }
   .tree .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .tree .branch { color: var(--accent); width: 22px; flex-shrink: 0; }
   .tree .sub { color: var(--accent); font-size: 12px; }
@@ -101,7 +107,7 @@
   <div class="bar top">
     <div><span class="muted" style="font-weight:600">killswitch</span> <span>— AI Agent 권한 위임 모니터</span></div>
     <div><span class="dot live" id="liveDot"></span><span id="updated">loading…</span></div>
-    <div>network: <span class="muted">ethereum-sepolia</span></div>
+    <div><span id="verSwitch"></span> · network: <span class="muted">ethereum-sepolia</span></div>
   </div>
 
   <div class="panes">
@@ -126,7 +132,8 @@
       <div class="foot">
         * 모든 데이터는 Ethereum Sepolia 테스트넷의 실제 온체인 기록이며, 20초마다 새로 불러옵니다. (출처: Blockscout Sepolia API)<br>
         * 거래 실패 사유(NOTE)는 탐색기가 revert 사유를 제공하지 않아, 컨트랙트 규칙대로 기록을 시간순 재생해 판별한 값입니다.<br>
-        * 킬스위치 워처는 온체인 밖(로컬)에서 실행되며, 여기에는 워처가 실행한 revoke 거래가 기록됩니다.
+        * 킬스위치 워처는 온체인 밖(로컬)에서 실행되며, 여기에는 워처가 실행한 revoke 거래가 기록됩니다.<br>
+        * V2에서는 정책 위반 거래가 revert되지 않고 같은 거래 안에서 권한을 freeze합니다. 그래서 탐색기에는 "Success"(status 1)로 보이지만, 송금은 실행되지 않았습니다(FROZEN으로 표시).
       </div>
     </div>
   </div>
@@ -142,9 +149,30 @@
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
+// V1 = off-chain watcher only (violations revert). V2 = AgentWallet is the tree's guardian and
+// freezes a token inside the violating tx itself. Pick with ?v=1 / ?v=2 (default: latest).
+const DEPLOYMENTS = {
+  v1: {
+    label: 'V1 · off-chain watcher',
+    permissionToken: '0xA09511600787d4BF40A49CE3501af2C23d737584',
+    agentWallet: '0x0B26b3d6500E8Cf03189042b3341d5be7774d29F',
+  },
+  v2: {
+    label: 'V2 · on-chain freeze',
+    permissionToken: '0x2E388Cd03AF310b1E841716B9b5af3662ceF8b83',
+    agentWallet: '0xa76f72f6158fD743772449873AFaBDd79c26C352',
+  },
+};
+const VERSION = (() => {
+  const q = new URLSearchParams(location.search).get('v');
+  if (q === '1' || q === 'v1') return 'v1';
+  if (q === '2' || q === 'v2') return DEPLOYMENTS.v2.permissionToken ? 'v2' : 'v1';
+  return DEPLOYMENTS.v2.permissionToken ? 'v2' : 'v1';
+})();
 const CONFIG = {
-  permissionToken: '0xA09511600787d4BF40A49CE3501af2C23d737584',
-  agentWallet: '0x0B26b3d6500E8Cf03189042b3341d5be7774d29F',
+  version: VERSION,
+  permissionToken: DEPLOYMENTS[VERSION].permissionToken,
+  agentWallet: DEPLOYMENTS[VERSION].agentWallet,
   roles: {
     '0xb6af02feea21e2960a7c14faf97badbe2e982836': 'Owner',
     '0x67f49213ae30080250467bbc2fc9495f9c58dca8': 'Hot Agent',
@@ -163,6 +191,7 @@ const IFACE = new ethers.Interface([
   'function freeze(uint256 tokenId)',
   'function unfreeze(uint256 tokenId)',
   'function revoke(uint256 tokenId)',
+  'function setGuardian(uint256 rootId, address guardian)',
   'function execute(uint256 tokenId, address target, uint256 value, bytes data) returns (bytes)',
 ]);
 
@@ -236,6 +265,9 @@ function replay(txs) {
   const events = [];
   const violations = []; // blocked executes: { tokenId, ts }
   const responses = [];  // { tokenId, violationTs, revokeTs, seconds }
+  const freezes = [];    // V2 on-chain freezes: { tokenId, ts, time }
+  const guardianOf = new Map(); // rootId -> guardian address
+  const rootOf = (id) => { let t = tokens.get(id); while (t && t.parent) t = tokens.get(t.parent); return t ? t.id : null; };
 
   const exists = (id) => tokens.has(id) && !tokens.get(id).revoked;
   const frozenChain = (id) => {
@@ -320,6 +352,18 @@ function replay(txs) {
       continue;
     }
 
+    if (fn === 'setGuardian') {
+      const rid = Number(a.rootId);
+      if (ok) guardianOf.set(rid, a.guardian);
+      events.push({
+        ...base, level: 'GUARD',
+        main: `P#${rid} guardian → ${role(a.guardian)}`,
+        note: ok ? '위반 시 같은 tx에서 즉시 freeze (V2)' : 'not root owner',
+        result: ok ? 'OK' : 'REVERTED',
+      });
+      continue;
+    }
+
     if (fn === 'revoke') {
       const id = Number(a.tokenId);
       let note = ok ? '' : (canManage(from, id) ? 'reverted' : 'not issuer');
@@ -341,7 +385,17 @@ function replay(txs) {
     if (fn === 'execute') {
       const id = Number(a.tokenId);
       const main = `P#${id} → ${short(a.target)} · ${eth(a.value)}`;
-      if (ok) {
+      const t0 = tokens.get(id);
+      const policyFail = t0 && (a.value > t0.policy.spendingLimit || !t0.policy.allowlist.map(lc).includes(lc(a.target)));
+      const guarded = t0 && lc(guardianOf.get(rootOf(id))) === lc(CONFIG.agentWallet);
+      if (ok && policyFail && guarded && isValidAt(id, ts) && lc(t0.owner) === lc(from)) {
+        // V2: tx status is 1, but the wallet sent nothing and froze the permission in this tx.
+        const why = a.value > t0.policy.spendingLimit ? `over limit (${eth(t0.policy.spendingLimit)})` : 'target not in allowlist';
+        t0.frozen = true;
+        violations.push({ tokenId: id, ts, time: tx.timestamp });
+        freezes.push({ tokenId: id, ts, time: tx.timestamp });
+        events.push({ ...base, level: 'EXEC', main, note: `${why} → 같은 tx에서 즉시 freeze · 송금 없음`, result: 'FROZEN' });
+      } else if (ok) {
         events.push({ ...base, level: 'EXEC', main, note: '정책 통과', result: 'OK' });
       } else {
         const t = tokens.get(id);
@@ -360,7 +414,7 @@ function replay(txs) {
       continue;
     }
   }
-  return { tokens, events, responses };
+  return { tokens, events, responses, freezes };
 }
 
 // ---------------------------------------------------------------------------
@@ -428,12 +482,13 @@ function renderTree(tokens) {
   $('tree').innerHTML = html.join('');
 }
 
-function renderStatus(tokens, events, responses) {
+function renderStatus(tokens, events, responses, freezes = []) {
   const all = [...tokens.values()].filter((t) => t.parent); // delegated permissions only
   const count = (lbl) => all.filter((t) => statusOf(t).label === lbl).length;
   const lastKill = [...events].reverse().find((e) => e.level === 'KILL' && e.ok);
   const lastResp = responses[responses.length - 1];
-  const blocked = events.filter((e) => e.result === 'BLOCKED').length;
+  const blocked = events.filter((e) => e.result === 'BLOCKED' || (e.level === 'EXEC' && e.result === 'FROZEN')).length;
+  const lastFreeze = freezes[freezes.length - 1];
   const rows = [
     ['delegated', `${all.length} permissions`],
     ['active', `${count('ACTIVE')}`],
@@ -441,12 +496,13 @@ function renderStatus(tokens, events, responses) {
     ['revoked', `${count('REVOKED')}`],
     ['blocked tx', `${blocked}`],
     ['last kill', lastKill ? `${kstTime(lastKill.time)} · ${lastKill.main.replace(' revoke', '')}` : '—'],
-    ['auto response', lastResp ? `${lastResp.seconds}s (위반 ${kstTime(lastResp.violationTime)} → revoke ${kstTime(lastResp.revokeTime)})` : '—'],
+    ...(CONFIG.version === 'v2' ? [['on-chain freeze', lastFreeze ? `0s · 위반 tx 안에서 (${kstTime(lastFreeze.time)}, P#${lastFreeze.tokenId})` : '—']] : []),
+    ['auto revoke', lastResp ? `${lastResp.seconds}s (위반 ${kstTime(lastResp.violationTime)} → revoke ${kstTime(lastResp.revokeTime)})` : '—'],
   ];
   $('status').innerHTML = rows.map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v)}</div>`).join('');
 }
 
-const LEVEL_COLOR = { EXEC: 'var(--accent)', GRANT: 'var(--accent)', FREEZE: 'var(--text)', UNFRZ: 'var(--accent)', KILL: 'var(--text)', DEPLOY: 'var(--accent)', FUND: 'var(--accent)' };
+const LEVEL_COLOR = { GUARD: 'var(--accent)', EXEC: 'var(--accent)', GRANT: 'var(--accent)', FREEZE: 'var(--text)', UNFRZ: 'var(--accent)', KILL: 'var(--text)', DEPLOY: 'var(--accent)', FUND: 'var(--accent)' };
 const RESULT_CLS = { OK: 'b-ok', BLOCKED: 'b-blocked', REJECTED: 'b-blocked', REVERTED: 'b-blocked', REVOKED: 'b-revoked', FROZEN: 'b-frozen' };
 
 function renderLog(events) {
@@ -486,9 +542,9 @@ async function refresh() {
       .filter((t) => t.block_number != null)
       .sort((x, y) => x.block_number - y.block_number || (x.position ?? 0) - (y.position ?? 0));
     knownSubAgents.clear();
-    const { tokens, events, responses } = replay(txs);
+    const { tokens, events, responses, freezes } = replay(txs);
     renderTree(tokens);
-    renderStatus(tokens, events, responses);
+    renderStatus(tokens, events, responses, freezes);
     renderLog(events);
     $('latestBlock').textContent = latest ?? (txs.length ? txs[txs.length - 1].block_number : '—');
     $('updated').textContent = `updated ${new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false })} KST`;
@@ -498,6 +554,12 @@ async function refresh() {
   }
 }
 
+$('verSwitch').innerHTML = Object.entries(DEPLOYMENTS)
+  .filter(([, d]) => d.permissionToken)
+  .map(([k, d]) => k === VERSION
+    ? `<span class="muted" style="font-weight:600">${esc(d.label)}</span>`
+    : `<a href="?v=${k.slice(1)}">${esc(d.label)}</a>`)
+  .join(' | ');
 $('ptLink').textContent = short(CONFIG.permissionToken);
 $('ptLink').href = `${CONFIG.explorer}/address/${CONFIG.permissionToken}`;
 $('awLink').textContent = short(CONFIG.agentWallet);

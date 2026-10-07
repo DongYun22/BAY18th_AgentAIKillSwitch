@@ -16,6 +16,7 @@
 import { ethers } from "ethers";
 import fs from "fs";
 import { AGENT_WALLET_ABI } from "./abis.js";
+import { classifyReceipt, OUTCOME_LABEL } from "./outcome.js";
 
 const RPC_URL = process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const HOT_AGENT_PRIVATE_KEY = process.env.HOT_AGENT_PRIVATE_KEY;
@@ -46,7 +47,8 @@ async function main() {
     );
     console.log("  tx 전송됨:", tx.hash);
     const receipt = await tx.wait().catch((e) => e.receipt); // ethers v6 throws on status 0 too
-    console.log("  온체인 결과 status:", receipt?.status, "(0 = 예상대로 차단/revert됨)");
+    const { kind } = classifyReceipt(receipt, AGENT_WALLET_ADDRESS);
+    console.log(`  온체인 결과 status=${receipt?.status} → ${OUTCOME_LABEL[kind]}`);
   } catch (e) {
     console.log("  전송 단계에서부터 차단됨:", e.shortMessage || e.message);
   }
