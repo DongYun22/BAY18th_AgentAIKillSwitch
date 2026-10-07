@@ -1,5 +1,7 @@
 import type { Address } from 'viem'
 import { config } from './config'
+import { createDemoProvider } from './demo/provider'
+import { playScene, sceneEvents, scenePlaying, sceneRevision, stageOpen } from './demo/scene'
 import { groupAgents } from './index/agents'
 import { identityTargets, readIdentities } from './index/labels'
 import { indexEnsRoles } from './index/ensV2'
@@ -48,6 +50,42 @@ function contractLink(id: string, address: string): void {
 contractLink('#link-permission-token', config.permissionToken)
 contractLink('#link-agent-wallet', config.agentWallet)
 
+// `?demo=1` runs the page on an in-page wallet and scene: no extension, no server, no chain.
+const demo = new URLSearchParams(location.search).get('demo') === '1'
+if (demo) window.ethereum = createDemoProvider() as unknown as Window['ethereum']
+
+function demoBar(): void {
+  const bar = slot('#demo')
+  bar.hidden = false
+  slot('#app').classList.add('has-demo')
+  const label = document.createElement('span')
+  label.className = 'muted'
+  label.textContent = 'Demo'
+  const caption = document.createElement('span')
+  caption.className = 'caption'
+  const idle = 'Nothing here is sent to a chain. Play a scene, or press a Revoke button yourself.'
+  caption.textContent = idle
+  const buttons: HTMLButtonElement[] = []
+  const play = (version: 'v1' | 'v2'): void => {
+    if (scenePlaying()) return
+    for (const button of buttons) button.disabled = true
+    void playScene(version, (text) => { caption.textContent = text }).finally(() => {
+      for (const button of buttons) button.disabled = false
+    })
+  }
+  buttons.push(
+    control('Play V1: watcher revokes', () => { play('v1') }),
+    control('Play V2: wallet freezes', () => { play('v2') }),
+    control('Reset', () => {
+      if (scenePlaying()) return
+      stageOpen()
+      caption.textContent = idle
+    }),
+  )
+  buttons[2].className = 'ghost'
+  bar.append(label, ...buttons, caption)
+}
+
 const narrowPane = window.matchMedia('(max-width: 1000px)')
 
 function paintRail(): void {
@@ -76,6 +114,11 @@ function paint(): void {
   errSlot.replaceChildren()
   if (!session) {
     walletSlot.append(control('Connect', () => { void onConnect() }))
+    if (!demo) {
+      const tryDemo = control('Try the demo', () => { location.search = '?demo=1' })
+      tryDemo.className = 'ghost'
+      walletSlot.append(tryDemo)
+    }
     screenSlot.replaceChildren()
     statusSlot.replaceChildren()
     updatedSlot.textContent = 'waiting'
@@ -89,7 +132,9 @@ function paint(): void {
   }
   const address = document.createElement('p')
   address.textContent = shortAddress(session.address)
-  walletSlot.append(address, control('Disconnect', () => { disconnect() }))
+  walletSlot.append(address, demo
+    ? control('Exit demo', () => { location.search = '' })
+    : control('Disconnect', () => { disconnect() }))
   updatedSlot.textContent = 'reading…'
   liveDot.classList.add('live')
   void load(session.address)
@@ -192,6 +237,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function readRevision(): Promise<number> {
+  if (demo) return sceneRevision()
   const ethereum = window.ethereum
   if (!ethereum || !('isMock' in ethereum) || ethereum.isMock !== true) return -1
   try {
@@ -222,6 +268,7 @@ async function poll(cold: Address): Promise<void> {
 }
 
 async function readWatchEvents(): Promise<WatchEvent[]> {
+  if (demo) return [...sceneEvents()]
   const ethereum = window.ethereum
   if (!ethereum || !('isMock' in ethereum) || ethereum.isMock !== true) return []
   try {
@@ -246,3 +293,7 @@ watchAccount((address) => {
 })
 
 paint()
+if (demo) {
+  demoBar()
+  void onConnect()
+}
