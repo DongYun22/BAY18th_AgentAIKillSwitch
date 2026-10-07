@@ -3,7 +3,8 @@
 BAY 리서치 아티클 「AI Agent Wallet과 권한 위임 구조」 5장(구현: "Revoke Cash — AI agentic ver.")의 코드 저장소입니다.
 Revoke.cash가 **지갑**의 approval을 점검·회수한다면, 이 프로젝트는 **지갑이 위임한 AI 에이전트**의 권한을 관리합니다.
 
-- 대시보드: https://bay18th-killswitch.vercel.app
+- 대시보드(실제 Sepolia 거래 재생): https://bay18th-killswitch.vercel.app
+- 킬스위치 화면 데모(지갑 없이 V1/V2 장면을 눌러 보기): https://bay18th-killswitch-app.vercel.app
 - 네트워크: Ethereum Sepolia (테스트넷)
 - 대시보드는 `?v=1`(V1), `?v=2`(V2, 기본값)로 전환합니다.
 
@@ -138,7 +139,9 @@ freeze된 토큰을 풀려면 Owner 키로 `cast send $PERMISSION_TOKEN_ADDRESS 
 >
 > **V2로 보기:** 주소 뒤에 `?v=2`를 붙이면 V2 컨트랙트를 읽습니다(기본값은 V1, 목 지갑도 V1). V2에서는 위반한 거래에서 freeze된 권한이 `FROZEN`으로 표시되고, 그 줄에 차단된 호출과 "같은 거래에서 freeze됨"이 함께 나옵니다. 목으로 보려면 `npm run scenario` 대신 `npm run scenario:v2`를 실행합니다(차단과 동시에 #2가 FROZEN, 2초 뒤 워처가 revoke로 격상).
 >
-> **데모 모드:** `?demo=1`로 열면 지갑·서버·체인 없이 페이지 안에서 장면이 재생됩니다(`cd app && npm run dev` 후 `http://127.0.0.1:5173/?demo=1`). 상단의 `Play V1` / `Play V2` 버튼으로 두 흐름을 비교하고, Revoke 버튼도 직접 눌러 볼 수 있습니다. 아무것도 체인으로 전송되지 않습니다. 지갑 없이 연 방문자에게는 Connect 옆에 `Try the demo` 버튼이 보입니다. 정적 호스팅에 배포할 때는 빌드 환경변수 `VITE_FROM_BLOCK=11805675`가 필요합니다.
+> **데모 모드:** `?demo=1`로 열면 지갑·서버·체인 없이 페이지 안에서 장면이 재생됩니다(`cd app && npm run dev` 후 `http://127.0.0.1:5173/?demo=1`). 상단의 `Play V1` / `Play V2` 버튼으로 두 흐름을 비교하고, Revoke 버튼도 직접 눌러 볼 수 있습니다. 아무것도 체인으로 전송되지 않습니다. 지갑 없이 연 방문자에게는 Connect 옆에 `Try the demo` 버튼이 보입니다.
+>
+> **공개 배포:** https://bay18th-killswitch-app.vercel.app 은 이 화면의 배포본입니다. 빌드 환경변수 `VITE_FROM_BLOCK=11805675`가 필요하고, `VITE_DEMO_ONLY=1`을 함께 넣으면 항상 데모로만 열립니다(Connect 버튼이 없고 방문자의 지갑을 읽지 않음). 공개 배포에는 `VITE_DEMO_ONLY=1`을 권합니다. 실제 지갑으로 revoke하려면 로컬에서 실행하세요.
 
 Kill switch is a Sepolia page for the account that owns a permission root. That account is Cold. Cold mints the root, then hands a narrower child token to a second key, the Hot Agent. The Hot Agent spends by calling `execute` on AgentWallet. This page lists that tree and revokes what Cold is allowed to sign.
 

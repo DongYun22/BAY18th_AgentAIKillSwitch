@@ -21,3 +21,21 @@ describe('K-T-2', () => {
     Object.assign(globalThis, { window: previous })
   })
 })
+
+describe('demo wallet', () => {
+  it('is used instead of an injected wallet once set', async () => {
+    const { connect, requestChainId, useProvider } = await import('./wallet')
+    const calls: string[] = []
+    useProvider({
+      async request(args: { method: string }) {
+        calls.push(args.method)
+        return args.method === 'eth_chainId' ? '0xaa36a7' : ['0xB6AF02FeEA21e2960A7C14FAf97bAdbE2E982836']
+      },
+      on() {},
+      removeListener() {},
+    } as never)
+    expect(await connect()).toBe('0xB6AF02FeEA21e2960A7C14FAf97bAdbE2E982836')
+    expect(await requestChainId()).toBe(11155111)
+    expect(calls).toEqual(['eth_requestAccounts', 'eth_chainId'])
+  })
+})
