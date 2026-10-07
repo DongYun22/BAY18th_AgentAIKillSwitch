@@ -10,6 +10,7 @@ state.json
 
 # dependencies / build output
 node_modules/
+app/dist/
 contracts/lib/
 contracts/out/
 contracts/cache/
