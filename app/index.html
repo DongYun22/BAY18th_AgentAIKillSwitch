@@ -37,6 +37,11 @@
       .frame { max-width: 1320px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
       .bar { background: var(--bar); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px; font-size: 13px; }
       .bar.top { min-height: 42px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+      .bar.demo { min-height: 46px; border-bottom: 1px solid var(--line); flex-wrap: wrap; justify-content: flex-start; gap: 12px; padding: 8px 20px; }
+      .bar.demo[hidden] { display: none; }
+      .bar.demo button { min-height: 30px; padding: 5px 14px; align-self: center; }
+      .bar.demo .caption { color: var(--text); flex: 1 1 320px; min-width: 0; }
+      .frame.has-demo .pane { max-height: calc(100vh - 150px); }
       .bar.bottom { min-height: 34px; border-top: 1px solid var(--line); font-size: 12px; flex-wrap: wrap; justify-content: flex-start; gap: 24px; padding: 8px 20px; }
       .brand { display: flex; align-items: baseline; gap: 8px; }
       .muted { color: var(--accent); }
@@ -158,6 +163,7 @@
         <div id="wallet" class="wallet"></div>
         <div><span class="dot" id="live"></span>network: <span class="muted">ethereum-sepolia</span> · <span id="updated">waiting</span></div>
       </div>
+      <div class="bar demo" id="demo" hidden></div>
       <div class="panes" id="panes">
         <section class="pane left">
           <div class="cmd">$ killswitch tree</div>
