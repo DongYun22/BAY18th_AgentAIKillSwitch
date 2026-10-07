@@ -7,10 +7,16 @@
     "normal": "node mockAgentNormal.js",
     "malicious": "node mockAgentMalicious.js",
     "watch": "node watcher.js",
+    "mock": "node mockWallet.js",
+    "qa": "node mockWallet.js --qa",
+    "demo:existing": "node demoExisting.js",
+    "demo:auto": "node demoAuto.js",
+    "scene": "node mockWallet.js --scene",
+    "scenario": "node scenario.js",
     "llm": "node llmAgent.js"
   },
   "dependencies": {
-    "ethers": "^6.13.4",
-    "@anthropic-ai/sdk": "^0.110.0"
+    "@anthropic-ai/sdk": "^0.110.0",
+    "ethers": "^6.13.4"
   }
 }

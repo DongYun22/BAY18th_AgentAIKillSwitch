@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kill-switch</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000000;
+        --bar: #0B0B0B;
+        --line: #08428B;
+        --row: #1A1A1A;
+        --text: #E6F1FD;
+        --accent: #129AF0;
+        --hi: #0A61E7;
+        --navy: #02122F;
+        --point: #08428B;
+      }
+      * { box-sizing: border-box; }
+      * { scrollbar-width: thin; scrollbar-color: #08428B #000000; }
+      *::-webkit-scrollbar { width: 8px; height: 8px; }
+      *::-webkit-scrollbar-track { background: #000000; }
+      *::-webkit-scrollbar-thumb { background: #08428B; border: 2px solid #000000; }
+      *::-webkit-scrollbar-thumb:hover { background: #129AF0; }
+      *::-webkit-scrollbar-corner { background: #000000; }
+      html, body { margin: 0; background: var(--bg); color: var(--text); }
+      body { font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace; font-size: 14px; }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { color: var(--text); text-decoration: underline; }
+      h1 { margin: 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+      p { margin: 0.2rem 0; overflow-wrap: anywhere; color: inherit; }
+
+      .frame { max-width: 1320px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+      .bar { background: var(--bar); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px; font-size: 13px; }
+      .bar.top { min-height: 42px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+      .bar.bottom { min-height: 34px; border-top: 1px solid var(--line); font-size: 12px; flex-wrap: wrap; justify-content: flex-start; gap: 24px; padding: 8px 20px; }
+      .brand { display: flex; align-items: baseline; gap: 8px; }
+      .muted { color: var(--accent); }
+      .strong { color: var(--text); font-weight: 600; }
+      .wallet { display: flex; align-items: center; gap: 10px; }
+      .wallet p { margin: 0; }
+
+      .panes { flex: 1; display: grid; grid-template-columns: minmax(520px, 1.15fr) minmax(320px, 0.85fr); min-height: 0; align-items: start; }
+      .panes.side-shut { grid-template-columns: minmax(0, 1fr) 20px; }
+      .pane { padding: 22px 24px 0; min-width: 0; max-height: calc(100vh - 90px); overflow: hidden; display: flex; flex-direction: column; }
+      .pane.left { border-right: 1px solid var(--line); }
+      .pane.right { border-left: 0; }
+      #screen, #side-body { overflow: auto; flex: 1; min-height: 0; padding-bottom: 22px; }
+      .panes.side-shut .pane.right { padding: 22px 0 0; }
+      .panes.side-shut #side-body, .panes.side-shut .cmd-label, .panes.side-shut .cmd .right { display: none; }
+      .panes.side-shut .cmd { margin: 0; padding: 0; justify-content: center; }
+      button.rail { min-height: 0; width: auto; padding: 6px 8px; background: transparent; color: var(--accent); border: 0; border-radius: 0; flex-shrink: 0; font-size: 12px; font-weight: 400; line-height: 1; align-self: center; }
+      button.rail:hover { background: transparent; color: var(--text); filter: none; }
+      button.rail:active { transform: none; filter: none; background: transparent; }
+      .cmd { color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; background: var(--bg); padding-bottom: 8px; }
+      .cmd .right { margin-left: auto; font-size: 12px; }
+
+      .tree { display: flex; flex-direction: column; font-size: 13px; line-height: 1.5; }
+      .card { border: 1px solid var(--line); background: #070707; margin-bottom: 12px; }
+      .card > .body { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+      .card.shut > .body { display: none; }
+      .card .card { margin: 4px 0 0; }
+      .sec.shut > .sec-body { display: none; }
+      .tree .hit, .tree .item { border: 1px solid transparent; cursor: pointer; }
+      .tree .hit { padding: 4px 4px 6px; }
+      .tree .row, .tree .item { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 8px; }
+      .tree .item > p { flex: 1; min-width: 0; margin: 0; padding-left: 0; color: var(--text); font-size: 13px; }
+      .tree .hit:hover, .tree .item:hover { background: var(--row); border-color: var(--line); }
+      .tree .hit:active, .tree .item:active { background: var(--navy); }
+      .tree .hit.on, .tree .item.on { background: var(--navy); border-color: var(--accent); }
+      .tree .row > button, .tree .item > button, .detail > button { margin-left: auto; flex-shrink: 0; }
+      .tree .branch { color: var(--accent); width: 22px; flex-shrink: 0; }
+      .origin { color: var(--accent); font-size: 12px; font-weight: 700; flex-shrink: 0; }
+      .app { color: var(--accent); font-size: 11px; font-weight: 500; flex-shrink: 0; }
+      .read-line { color: var(--text); font-size: 13px; margin: 4px 0; }
+      .read-line.now { color: var(--accent); }
+      .hist { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px; border: 1px solid transparent; cursor: pointer; }
+      .hist:hover { background: var(--row); border-color: var(--line); }
+      .hist:active { background: var(--navy); }
+      .hist.on { background: var(--navy); border-color: var(--accent); }
+      .hist > p { flex: 1; min-width: 0; margin: 0; color: var(--text); }
+      .hist.log-auto { border-left: 3px solid var(--text); background: #07111f; }
+      .cause { color: var(--text); font-size: 13px; line-height: 1.45; margin: 0; padding: 2px 8px 2px 32px; }
+      .hit.cause-blocked { border-color: var(--accent); background: #07111f; }
+      .hit.cause-auto { border-color: var(--text); background: #07111f; }
+      .hit.cause-manual { border-left: 3px solid var(--line); }
+      .incident { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--text); background: #07111f; }
+      .incident.live { border-color: var(--accent); }
+      .incident .cause { padding: 0; }
+      .incident > p { margin: 0; }
+      .kill { color: var(--navy); background: var(--text); font-size: 11px; font-weight: 700; padding: 1px 6px; flex-shrink: 0; }
+      .hist-sec { margin-top: 18px; }
+      .tree .sub { color: var(--text); font-size: 13px; padding-left: 32px; }
+      .tree .note { color: var(--accent); font-size: 12px; padding: 0 8px 8px 16px; }
+      .tree .role, .role { font-weight: 700; color: var(--text); }
+      .lvl { width: 64px; flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--text); }
+
+      .badge { padding: 1px 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+      .b-active { background: var(--hi); color: var(--text); }
+      .b-revoked { background: var(--text); color: var(--navy); }
+      .b-frozen { border: 1px solid var(--accent); color: var(--accent); padding: 0 5px; }
+      .b-expired { background: #141414; color: var(--accent); }
+
+      button { font: inherit; border: 0; background: var(--hi); color: var(--text); padding: 8px 16px; min-height: 34px; font-size: 13px; font-weight: 700; cursor: pointer; align-self: flex-start; transition: filter 80ms linear, transform 80ms linear, background 80ms linear; }
+      button:hover { filter: brightness(1.18); }
+      button:active { transform: translateY(1px); filter: brightness(0.88); }
+      button:disabled, button.busy { opacity: 0.55; cursor: progress; }
+      button.fold { width: 100%; display: flex; align-items: center; gap: 8px; align-self: stretch; background: transparent; color: var(--text); border-bottom: 1px solid var(--line); padding: 10px 12px; text-align: left; filter: none; }
+      button.fold:hover { background: var(--row); filter: none; }
+      button.fold:active { background: var(--point); transform: none; filter: none; }
+      button.fold .mark { color: var(--accent); width: 14px; flex-shrink: 0; }
+      button.fold .fold-name { min-width: 0; }
+      button.fold .count { margin-left: auto; color: var(--accent); font-weight: 500; }
+      .kv > div { overflow-wrap: anywhere; }
+      button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+      button.ghost:hover { background: var(--navy); }
+      .detail { margin-top: 22px; border: 1px solid var(--line); background: var(--bar); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+      .detail .kicker { color: var(--accent); font-size: 12px; font-weight: 700; }
+      .detail .full { color: var(--text); font-size: 14px; line-height: 1.5; }
+      .detail .note { color: var(--accent); font-size: 12px; padding: 0; }
+      .detail > button { align-self: flex-start; margin-left: 0; min-height: 40px; padding: 10px 18px; }
+
+      .kv { display: grid; grid-template-columns: 150px 1fr; row-gap: 8px; column-gap: 12px; font-size: 13px; }
+      .kv > div:nth-child(odd) { color: var(--accent); }
+      .error { color: var(--text); background: var(--hi); padding: 8px 10px; font-size: 12px; margin-top: 10px; }
+      .foot { font-size: 12px; color: var(--accent); line-height: 1.6; margin-top: 28px; }
+      .prompt { margin-top: 18px; }
+      .cursor { display: inline-block; width: 9px; height: 17px; background: var(--text); vertical-align: middle; animation: blink 1s steps(1) infinite; }
+      .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; }
+      .dot.live { animation: blink 1s steps(1) infinite; }
+      @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+      @media (max-width: 1000px) {
+        .panes, .panes.side-shut { grid-template-columns: 1fr; }
+        .pane { max-height: none; overflow: visible; }
+        #screen, #side-body { overflow: visible; }
+        .pane.left { border-right: none; border-bottom: 1px solid var(--line); }
+        .panes.side-shut .pane.right { display: flex; padding: 16px 16px 0; }
+      }
+      @media (max-width: 640px) {
+        body { font-size: 12px; }
+        .pane { padding: 16px; }
+        .kv { grid-template-columns: 120px 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="frame">
+      <div class="bar top">
+        <div class="brand">
+          <h1>Kill-switch</h1>
+          <span>— AI agent permission monitor</span>
+        </div>
+        <div id="wallet" class="wallet"></div>
+        <div><span class="dot" id="live"></span>network: <span class="muted">ethereum-sepolia</span> · <span id="updated">waiting</span></div>
+      </div>
+      <div class="panes" id="panes">
+        <section class="pane left">
+          <div class="cmd">$ killswitch tree</div>
+          <div id="screen" class="tree"></div>
+        </section>
+        <section class="pane right">
+          <div class="cmd"><button type="button" id="side-toggle" class="rail" aria-expanded="true">›</button><span class="cmd-label">$ killswitch status</span><span class="right">Sepolia</span></div>
+          <div id="side-body">
+            <div id="status"></div>
+            <div id="err"></div>
+            <div class="prompt"><span class="muted">$</span> <span class="cursor"></span></div>
+          </div>
+        </section>
+      </div>
+      <div class="bar bottom">
+        <span><span class="muted">PermissionToken</span> <a href="https://sepolia.etherscan.io/address/0xA09511600787d4BF40A49CE3501af2C23d737584" target="_blank" rel="noopener">0xA095...7584</a></span>
+        <span><span class="muted">AgentWallet</span> <a href="https://sepolia.etherscan.io/address/0x0B26b3d6500E8Cf03189042b3341d5be7774d29F" target="_blank" rel="noopener">0x0B26...d29F</a></span>
+      </div>
+    </div>
+    <script>
+      if (new URLSearchParams(location.search).get("mock") === "1") {
+        document.write('<script src="http://127.0.0.1:8787/provider.js"><\/script>')
+      }
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

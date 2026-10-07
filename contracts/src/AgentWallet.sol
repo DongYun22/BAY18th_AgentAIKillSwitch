@@ -28,6 +28,10 @@ contract AgentWallet {
     error NotTokenOwner();
     error PolicyRejected();
     error ExecutionFailed();
+    error NotManager();
+    error ClearFailed();
+
+    event Erc20AllowanceCleared(uint256 indexed tokenId, address indexed token, address indexed spender);
 
     constructor(address permissionTokenAddress) {
         permissionToken = PermissionToken(permissionTokenAddress);
@@ -61,6 +65,18 @@ contract AgentWallet {
 
         emit AgentTransactionExecuted(tokenId, target, value, data);
         return result;
+    }
+
+    /// @notice Parent owner clears an ERC-20 allowance this wallet granted. Not an execute, and not an allowlist check.
+    function clearErc20Allowance(uint256 tokenId, address token, address spender) external {
+        uint256 parent = permissionToken.parentTokenId(tokenId);
+        address manager = parent == 0 ? permissionToken.ownerOf(tokenId) : permissionToken.ownerOf(parent);
+        if (msg.sender != manager) revert NotManager();
+
+        (bool ok, bytes memory data) = token.call(abi.encodeWithSignature("approve(address,uint256)", spender, 0));
+        if (!ok || (data.length >= 32 && !abi.decode(data, (bool)))) revert ClearFailed();
+
+        emit Erc20AllowanceCleared(tokenId, token, spender);
     }
 
     /// @dev Lets the wallet hold ETH so it can forward `value` in execute() calls.
