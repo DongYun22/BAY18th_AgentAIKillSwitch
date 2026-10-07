@@ -134,7 +134,9 @@ freeze된 토큰을 풀려면 Owner 키로 `cast send $PERMISSION_TOKEN_ADDRESS 
 
 ## Kill switch 화면 (app)
 
-> 이 절은 [`app/`](app)의 킬스위치 화면과 목 시나리오 안내입니다. 화면·목·시나리오는 **V1 컨트랙트**(`0xA095…7584`, `0x0B26…d29F`)와 "실패한 `execute`"를 기준으로 동작하며, V2의 `PolicyViolation`(성공한 거래 안에서의 freeze)은 아직 화면에 표시하지 않습니다.
+> 이 절은 [`app/`](app)의 킬스위치 화면과 목 시나리오 안내입니다. 아래 본문은 **V1**(실패한 `execute` 뒤 워처가 revoke) 기준으로 쓰여 있습니다.
+>
+> **V2로 보기:** 주소 뒤에 `?v=2`를 붙이면 V2 컨트랙트를 읽습니다(기본값은 V1, 목 지갑도 V1). V2에서는 위반한 거래에서 freeze된 권한이 `FROZEN`으로 표시되고, 그 줄에 차단된 호출과 "같은 거래에서 freeze됨"이 함께 나옵니다. 목으로 보려면 `npm run scenario` 대신 `npm run scenario:v2`를 실행합니다(차단과 동시에 #2가 FROZEN, 2초 뒤 워처가 revoke로 격상).
 
 Kill switch is a Sepolia page for the account that owns a permission root. That account is Cold. Cold mints the root, then hands a narrower child token to a second key, the Hot Agent. The Hot Agent spends by calling `execute` on AgentWallet. This page lists that tree and revokes what Cold is allowed to sign.
 

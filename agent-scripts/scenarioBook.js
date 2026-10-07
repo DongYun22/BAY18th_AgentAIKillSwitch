@@ -66,6 +66,7 @@ const ensCall = new ethers.Interface([
 
 let logs = [];
 let revoked = new Set();
+let frozen = new Set();
 let watch = [];
 let revision = 0;
 let playing = false;
@@ -159,6 +160,11 @@ function blockedEvent() {
   };
 }
 
+// V2: the wallet blocks the call and freezes the permission in that same transaction.
+function frozenEvent() {
+  return { ...blockedEvent(), result: "FROZEN" };
+}
+
 function autoEvent() {
   return {
     level: "KILL",
@@ -173,7 +179,20 @@ function autoEvent() {
 export function stageOpen() {
   logs = grants();
   revoked = new Set();
+  frozen = new Set();
   watch = [];
+  bump();
+}
+
+export function stageFrozen() {
+  frozen.add(AUTO_ID.toString());
+  watch = [frozenEvent()];
+  bump();
+}
+
+export function stageEscalated() {
+  revoked.add(AUTO_ID.toString());
+  watch = [frozenEvent(), autoEvent()];
   bump();
 }
 
@@ -226,6 +245,28 @@ export async function playScenario(write) {
     stageManual();
     write("beat 3 — owner revoke #1 · no auto response\n");
     write("#3 stays ACTIVE. Revoke agent is still on the agent rows.\n");
+  } finally {
+    playing = false;
+  }
+}
+
+// V2: no gap between the blocked call and the stop. The watcher only escalates afterwards.
+export async function playScenarioV2(write) {
+  if (playing) {
+    write("already playing\n");
+    return;
+  }
+  playing = true;
+  try {
+    stageOpen();
+    write("beat 0 — #1 #2 #3 ACTIVE. Watch the page.\n");
+    await delay(1600);
+    stageFrozen();
+    write(`beat 1 — #2 blocked · target not in allowlist · ${OUTSIDE} · FROZEN in the same tx\n`);
+    await delay(2000);
+    stageEscalated();
+    write("beat 2 — watcher escalates the freeze 2s later · #2 REVOKED\n");
+    write("#1 and #3 stay ACTIVE.\n");
   } finally {
     playing = false;
   }
@@ -287,7 +328,7 @@ export function sceneCall(tx) {
       return permissionCall.encodeFunctionResult("ownerOf", [holder]);
     }
     if (parsed.name === "getPolicy") return policyFor(id);
-    if (parsed.name === "isValid") return permissionCall.encodeFunctionResult("isValid", [!revoked.has(id.toString())]);
+    if (parsed.name === "isValid") return permissionCall.encodeFunctionResult("isValid", [!revoked.has(id.toString()) && !frozen.has(id.toString())]);
     return null;
   }
 

@@ -13,6 +13,7 @@
     "demo:auto": "node demoAuto.js",
     "scene": "node mockWallet.js --scene",
     "scenario": "node scenario.js",
+    "scenario:v2": "node scenario.js v2",
     "llm": "node llmAgent.js"
   },
   "dependencies": {

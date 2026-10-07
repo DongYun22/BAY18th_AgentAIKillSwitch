@@ -58,7 +58,8 @@ export type WatchEvent = {
   actor: string
   detail: string
   note: string
-  result: 'BLOCKED' | 'REVOKED'
+  // FROZEN: v2. The wallet blocked the call and froze the permission in that same transaction.
+  result: 'BLOCKED' | 'REVOKED' | 'FROZEN'
   seconds: number | null
 }
 
@@ -609,6 +610,7 @@ function autoResponse(): string {
   const kill = watchEvents.find((event) => event.level === 'KILL' && event.seconds !== null)
   const exec = watchEvents.find((event) => event.level === 'EXEC')
   if (!kill) {
+    if (exec?.result === 'FROZEN') return 'A call was blocked, and the wallet froze the permission in the same transaction.'
     return exec ? 'A call was blocked because the address is outside the allowlist. The permission is still active.' : '—'
   }
   const id = /#(\d+)/.exec(kill.detail)
@@ -625,6 +627,8 @@ function explainBlock(event: WatchEvent): string {
   return event.note === '' ? event.detail : `${event.detail}. ${event.note}`
 }
 
+const FROZEN_IN_TX = 'The wallet froze this permission in the same transaction.'
+
 function permissionCause(tokenId: bigint, status: PermissionStatus): { kind: 'blocked' | 'auto' | 'manual'; lines: string[]; chip: string | null } | null {
   const id = tokenId.toString()
   const exec = watchEvents.find((event) => event.level === 'EXEC' && event.detail.includes(`P#${id}`))
@@ -632,11 +636,30 @@ function permissionCause(tokenId: bigint, status: PermissionStatus): { kind: 'bl
   if (exec && kill && kill.seconds !== null) {
     return {
       kind: 'auto',
+      lines: exec.result === 'FROZEN'
+        ? [
+          explainBlock(exec),
+          FROZEN_IN_TX,
+          `The watcher revoked this permission ${kill.seconds}s later.`,
+        ]
+        : [
+          explainBlock(exec),
+          `The watcher revoked this permission ${kill.seconds}s later.`,
+        ],
+      chip: 'automatic',
+    }
+  }
+  if (exec?.result === 'FROZEN') {
+    return {
+      kind: 'blocked',
       lines: [
         explainBlock(exec),
-        `The watcher revoked this permission ${kill.seconds}s later.`,
+        FROZEN_IN_TX,
+        status === 'REVOKED'
+          ? 'It was revoked afterwards.'
+          : 'It stays frozen until the owner unfreezes or revokes it.',
       ],
-      chip: 'automatic',
+      chip: 'frozen in tx',
     }
   }
   if (exec) {
@@ -690,7 +713,9 @@ function incidentCard(body: HTMLElement, incident: { exec: WatchEvent | null; ki
   const seconds = incident.kill?.seconds
   title.textContent = seconds !== null && seconds !== undefined
     ? `Automatic revoke, ${seconds}s after the blocked call`
-    : 'Blocked call. The permission is still active.'
+    : incident.exec?.result === 'FROZEN'
+      ? 'Blocked call. The permission was frozen in the same transaction.'
+      : 'Blocked call. The permission is still active.'
   card.append(title)
   if (incident.exec) {
     const why = document.createElement('p')

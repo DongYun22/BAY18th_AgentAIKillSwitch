@@ -1,4 +1,5 @@
 import type { Address } from 'viem'
+import { config } from './config'
 import { groupAgents } from './index/agents'
 import { identityTargets, readIdentities } from './index/labels'
 import { indexEnsRoles } from './index/ensV2'
@@ -7,6 +8,7 @@ import { indexErc20Allowances } from './index/erc20'
 import { indexErc721Operators } from './index/erc721'
 import { indexPermissions } from './index/permissionToken'
 import { indexPermit2Allowances } from './index/permit2'
+import { indexViolations } from './index/violations'
 import { bindSender } from './revoke/delegation7702'
 import type { ReadClient } from './types'
 import { beginLoad, renderAgents, renderReading, renderStatus, setIdentities, setScreenActions, setWatchEvents, toScreen, type WatchEvent } from './view/render'
@@ -36,6 +38,15 @@ const updatedSlot = slot('#updated')
 const liveDot = slot('#live')
 const panes = slot('#panes')
 const sideToggle = slot('#side-toggle')
+
+function contractLink(id: string, address: string): void {
+  const link = slot(id)
+  link.setAttribute('href', `https://sepolia.etherscan.io/address/${address}`)
+  link.textContent = `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+contractLink('#link-permission-token', config.permissionToken)
+contractLink('#link-agent-wallet', config.agentWallet)
 
 const narrowPane = window.matchMedia('(max-width: 1000px)')
 
@@ -143,7 +154,10 @@ async function load(cold: Address, quiet = false): Promise<void> {
     const model = toScreen(cold, indexed, erc20, erc721, permit2, delegations, ens)
     const identities = await readIdentities(client as unknown as ReadClient, identityTargets(model))
     setIdentities(identities)
-    setWatchEvents(await readWatchEvents())
+    const violations = config.version === 'v2'
+      ? await indexViolations(client as unknown as ReadClient, rows)
+      : []
+    setWatchEvents([...await readWatchEvents(), ...violations])
     const sender = bindSender(cold, walletClient(), client)
     const draw = (): void => {
       setScreenActions({ sender, refresh: draw })

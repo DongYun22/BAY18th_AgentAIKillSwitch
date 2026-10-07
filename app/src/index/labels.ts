@@ -31,6 +31,7 @@ const KNOWN: Record<string, string> = {
   '0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e': 'Uniswap',
   '0x000000000022d473030f116ddee9f6b43ac78ba3': 'Permit2',
   '0x0b26b3d6500e8cf03189042b3341d5be7774d29f': 'AgentWallet',
+  '0xa76f72f6158fd743772449873afabdd79c26c352': 'AgentWallet',
 }
 
 export type Identity = {
