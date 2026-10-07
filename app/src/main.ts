@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import type { Address, EIP1193Provider } from 'viem'
 import { config } from './config'
 import { createDemoProvider } from './demo/provider'
 import { playScene, sceneEvents, scenePlaying, sceneRevision, stageOpen } from './demo/scene'
@@ -20,6 +20,7 @@ import {
   publicClient,
   requestChainId,
   shortAddress,
+  useProvider,
   walletClient,
   watchAccount,
 } from './wallet'
@@ -51,8 +52,11 @@ contractLink('#link-permission-token', config.permissionToken)
 contractLink('#link-agent-wallet', config.agentWallet)
 
 // `?demo=1` runs the page on an in-page wallet and scene: no extension, no server, no chain.
-const demo = new URLSearchParams(location.search).get('demo') === '1'
-if (demo) window.ethereum = createDemoProvider() as unknown as Window['ethereum']
+// A build with VITE_DEMO_ONLY=1 is always the demo and never connects a real wallet. That is the
+// setting for a public deployment, where a visitor's Connect would otherwise send real transactions.
+const demoOnly = import.meta.env.VITE_DEMO_ONLY === '1'
+const demo = demoOnly || new URLSearchParams(location.search).get('demo') === '1'
+if (demo) useProvider(createDemoProvider() as unknown as EIP1193Provider)
 
 function demoBar(): void {
   const bar = slot('#demo')
@@ -132,9 +136,9 @@ function paint(): void {
   }
   const address = document.createElement('p')
   address.textContent = shortAddress(session.address)
-  walletSlot.append(address, demo
-    ? control('Exit demo', () => { location.search = '' })
-    : control('Disconnect', () => { disconnect() }))
+  walletSlot.append(address)
+  if (!demo) walletSlot.append(control('Disconnect', () => { disconnect() }))
+  else if (!demoOnly) walletSlot.append(control('Exit demo', () => { location.search = '' }))
   updatedSlot.textContent = 'reading…'
   liveDot.classList.add('live')
   void load(session.address)
@@ -252,7 +256,7 @@ async function readRevision(): Promise<number> {
 
 async function poll(cold: Address): Promise<void> {
   if (polling) return
-  if (!window.ethereum || !('isMock' in window.ethereum) || window.ethereum.isMock !== true) return
+  if (!demo && (!window.ethereum || !('isMock' in window.ethereum) || window.ethereum.isMock !== true)) return
   polling = true
   try {
     while (session?.address === cold) {

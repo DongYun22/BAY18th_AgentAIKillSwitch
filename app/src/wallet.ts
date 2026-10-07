@@ -26,7 +26,16 @@ export function shortAddress(address: string): string {
   return `0x${address.slice(2, 6)}…${address.slice(-4)}`
 }
 
+let override: EIP1193Provider | null = null
+
+// The demo brings its own in-page wallet. It is used instead of an installed extension, so the
+// demo neither reads nor overwrites `window.ethereum` (some wallets make that property read-only).
+export function useProvider(next: EIP1193Provider): void {
+  override = next
+}
+
 function provider(): EIP1193Provider {
+  if (override) return override
   const ethereum = globalThis.window?.ethereum
   if (!ethereum) throw new Error('Wrong chain')
   return ethereum
@@ -38,7 +47,7 @@ export async function connect(): Promise<Address> {
 }
 
 export function watchAccount(onChange: (address: Address | null) => void): void {
-  if (!globalThis.window?.ethereum) return
+  if (!override && !globalThis.window?.ethereum) return
   provider().on('accountsChanged', (accounts: string[]) => {
     if (accounts.length === 0) {
       onChange(null)
