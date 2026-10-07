@@ -18,3 +18,6 @@ contracts/broadcast/
 # tooling
 .vercel/
 .DS_Store
+
+# LLM probe outputs (local experiment logs)
+probe-*.json

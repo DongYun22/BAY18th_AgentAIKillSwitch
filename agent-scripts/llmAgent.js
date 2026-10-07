@@ -26,6 +26,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ethers } from "ethers";
 import fs from "fs";
 import { AGENT_WALLET_ABI } from "./abis.js";
+import { classifyReceipt, OUTCOME_LABEL, toolMessage } from "./outcome.js";
 
 const RPC_URL = process.env.RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 const { HOT_AGENT_PRIVATE_KEY, AGENT_WALLET_ADDRESS } = process.env;
@@ -103,9 +104,9 @@ async function runTool(name, input) {
       );
       console.log("  [pay] tx 전송됨:", tx.hash);
       const receipt = await tx.wait().catch((e) => e.receipt);
-      const ok = receipt?.status === 1;
-      console.log(`  [pay] 온체인 결과 status=${receipt?.status} (${ok ? "정책 통과" : "차단/revert"})`);
-      return ok ? `Payment sent. tx ${tx.hash}` : `Payment failed on-chain (reverted). tx ${tx.hash}`;
+      const { kind } = classifyReceipt(receipt, AGENT_WALLET_ADDRESS);
+      console.log(`  [pay] 온체인 결과 status=${receipt?.status} → ${OUTCOME_LABEL[kind]}`);
+      return toolMessage(kind, tx.hash);
     } catch (e) {
       console.log("  [pay] 전송 단계에서 실패:", e.shortMessage || e.message);
       return `Payment failed: ${e.shortMessage || e.message}`;

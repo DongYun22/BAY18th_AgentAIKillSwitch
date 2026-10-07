@@ -18,6 +18,13 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 ///        call (see AgentWallet.sol), not inside account-abstraction validation.
 ///      - `allowlist` uses deny-by-default semantics: an empty allowlist permits no target.
 ///        Attenuation requires a child's allowlist to be a subset of its parent's allowlist.
+///
+///      V2 — on-chain circuit breaker: a root owner may register a *guardian* contract for its
+///      delegation tree (typically the AgentWallet). The guardian can only `guardianFreeze` tokens
+///      in that tree — never unfreeze or revoke them. This lets the wallet freeze a token inside the
+///      very transaction in which the token's holder attempts a policy violation, instead of
+///      waiting for an off-chain watcher to notice and react blocks later. Unfreezing or revoking
+///      stays with the human issuer (or a watcher acting with the issuer's key).
 contract PermissionToken is ERC721 {
     struct Policy {
         uint256 spendingLimit; // max value (wei or token units) a single execute() call may move
@@ -31,6 +38,7 @@ contract PermissionToken is ERC721 {
     mapping(uint256 => uint256) public parentTokenId;  // 0 = root (no parent)
     mapping(uint256 => uint256[]) public childTokenIds;
     mapping(uint256 => bool) public frozen;            // reversible pause; checked up the ancestor chain
+    mapping(uint256 => address) public guardianOf;     // V2: rootId => contract allowed to freeze in that tree
 
     event PermissionMinted(
         uint256 indexed tokenId,
@@ -42,6 +50,7 @@ contract PermissionToken is ERC721 {
     event PermissionFrozen(uint256 indexed tokenId, address indexed by);
     event PermissionUnfrozen(uint256 indexed tokenId, address indexed by);
     event PermissionRevoked(uint256 indexed tokenId, address indexed by);
+    event GuardianSet(uint256 indexed rootId, address indexed guardian);
 
     error NotTransferable();
     error NotAuthorized();
@@ -112,6 +121,28 @@ contract PermissionToken is ERC721 {
     }
 
     // ---------------------------------------------------------------------
+    // V2 guardian — freeze-only circuit breaker, opted into per delegation tree by the root owner
+    // ---------------------------------------------------------------------
+
+    /// @notice Root owner authorizes `guardian` (e.g. the AgentWallet) to freeze tokens in this
+    ///         tree. Pass address(0) to remove it.
+    function setGuardian(uint256 rootId, address guardian) external {
+        if (parentTokenId[rootId] != 0 || !_exists(rootId) || ownerOf(rootId) != msg.sender) revert NotAuthorized();
+        guardianOf[rootId] = guardian;
+        emit GuardianSet(rootId, guardian);
+    }
+
+    /// @notice Freeze `tokenId` on behalf of its tree's guardian. Freeze-only: the guardian can
+    ///         stop a token instantly but cannot unfreeze or revoke it.
+    function guardianFreeze(uint256 tokenId) external {
+        if (!_exists(tokenId)) revert TokenNotValid();
+        address g = guardianOf[rootOf(tokenId)];
+        if (g == address(0) || g != msg.sender) revert NotAuthorized();
+        frozen[tokenId] = true;
+        emit PermissionFrozen(tokenId, msg.sender);
+    }
+
+    // ---------------------------------------------------------------------
     // Revoke — irreversible, cascades to every descendant (the kill switch)
     // ---------------------------------------------------------------------
 
@@ -141,6 +172,12 @@ contract PermissionToken is ERC721 {
 
     function getChildren(uint256 tokenId) external view returns (uint256[] memory) {
         return childTokenIds[tokenId];
+    }
+
+    /// @notice The root of the delegation tree `tokenId` belongs to.
+    function rootOf(uint256 tokenId) public view returns (uint256 root) {
+        root = tokenId;
+        while (parentTokenId[root] != 0) root = parentTokenId[root];
     }
 
     /// @notice A token is valid if it (still) exists, has not expired, and neither it nor any

@@ -237,4 +237,153 @@ contract PermissionTokenTest is Test {
         vm.expectRevert(PermissionToken.NotAuthorized.selector);
         permissionToken.revoke(childId);
     }
+
+    // ---------------------------------------------------------------------
+    // V2 — guardian / on-chain circuit breaker
+    // ---------------------------------------------------------------------
+
+    function _enableGuardian() internal {
+        vm.prank(cold);
+        permissionToken.setGuardian(rootId, address(agentWallet));
+    }
+
+    function test_V2_SetGuardian_OnlyRootOwner() public {
+        vm.prank(attacker);
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.setGuardian(rootId, attacker);
+
+        // a child token is not a root, even for its own holder
+        vm.prank(hotAgent);
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.setGuardian(childId, hotAgent);
+
+        _enableGuardian();
+        assertEq(permissionToken.guardianOf(rootId), address(agentWallet));
+    }
+
+    function test_V2_GuardianFreeze_OnlyRegisteredGuardian() public {
+        vm.prank(attacker);
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.guardianFreeze(childId);
+
+        // no guardian registered yet -> even the wallet cannot freeze
+        vm.prank(address(agentWallet));
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.guardianFreeze(childId);
+    }
+
+    function test_V2_GuardianCannotUnfreezeOrRevoke() public {
+        _enableGuardian();
+        vm.prank(address(agentWallet));
+        permissionToken.guardianFreeze(childId);
+
+        vm.prank(address(agentWallet));
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.unfreeze(childId);
+
+        vm.prank(address(agentWallet));
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.revoke(childId);
+    }
+
+    function test_V2_Violation_FreezesInSameTxWithoutMovingFunds() public {
+        _enableGuardian();
+        uint256 walletBefore = address(agentWallet).balance;
+
+        vm.expectEmit(true, true, false, true, address(agentWallet));
+        emit AgentWallet.PolicyViolation(childId, address(disallowedService), 0.1 ether);
+        vm.prank(hotAgent);
+        agentWallet.execute(childId, address(disallowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+
+        assertTrue(permissionToken.frozen(childId));
+        assertFalse(permissionToken.isValid(childId));
+        assertEq(disallowedService.totalReceived(), 0);
+        assertEq(address(agentWallet).balance, walletBefore);
+    }
+
+    function test_V2_OverLimitViolation_AlsoFreezes() public {
+        _enableGuardian();
+        vm.prank(hotAgent);
+        agentWallet.execute(childId, address(allowedService), 2 ether, abi.encodeCall(MockService.pay, ()));
+        assertTrue(permissionToken.frozen(childId));
+        assertEq(allowedService.totalReceived(), 0);
+    }
+
+    function test_V2_RetryAfterViolation_IsRejectedEvenToAllowedTarget() public {
+        // The exact pattern the live LLM showed on V1: blocked, then immediately retried an
+        // allowlisted payment that went through before the off-chain watcher could revoke.
+        _enableGuardian();
+        vm.prank(hotAgent);
+        agentWallet.execute(childId, address(disallowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+
+        vm.prank(hotAgent);
+        vm.expectRevert(AgentWallet.PolicyRejected.selector);
+        agentWallet.execute(childId, address(allowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+        assertEq(allowedService.totalReceived(), 0);
+    }
+
+    function test_V2_NonHolderCannotTriggerFreeze() public {
+        // Otherwise anyone could freeze someone else's permission with a bad request.
+        _enableGuardian();
+        vm.prank(attacker);
+        vm.expectRevert(AgentWallet.NotTokenOwner.selector);
+        agentWallet.execute(childId, address(disallowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+        assertFalse(permissionToken.frozen(childId));
+    }
+
+    function test_V2_IssuerCanUnfreezeAfterGuardianFreeze() public {
+        _enableGuardian();
+        vm.prank(hotAgent);
+        agentWallet.execute(childId, address(disallowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+
+        vm.prank(cold);
+        permissionToken.unfreeze(childId);
+
+        vm.prank(hotAgent);
+        agentWallet.execute(childId, address(allowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+        assertEq(allowedService.totalReceived(), 0.1 ether);
+    }
+
+    function test_V2_IssuerCanEscalateFreezeToRevoke() public {
+        _enableGuardian();
+        vm.prank(hotAgent);
+        agentWallet.execute(childId, address(disallowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+
+        vm.prank(cold);
+        permissionToken.revoke(childId);
+        vm.expectRevert(); // ERC721NonexistentToken
+        permissionToken.ownerOf(childId);
+    }
+
+    function test_V2_GuardianOfOneTreeCannotFreezeAnother() public {
+        _enableGuardian();
+        address[] memory al = new address[](1);
+        al[0] = address(allowedService);
+        address otherOwner = makeAddr("otherOwner");
+        vm.prank(otherOwner);
+        uint256 otherRoot = permissionToken.mintRoot(
+            PermissionToken.Policy({spendingLimit: 1 ether, allowlist: al, expiry: uint64(block.timestamp + 1 days)})
+        );
+
+        vm.prank(address(agentWallet));
+        vm.expectRevert(PermissionToken.NotAuthorized.selector);
+        permissionToken.guardianFreeze(otherRoot);
+    }
+
+    function test_V2_ViolationByGrandchild_FreezesOnlyThatBranch() public {
+        _enableGuardian();
+        address[] memory al = new address[](1);
+        al[0] = address(allowedService);
+        vm.prank(hotAgent);
+        uint256 subId = permissionToken.mintChild(
+            subAgent, childId, PermissionToken.Policy({spendingLimit: 0.5 ether, allowlist: al, expiry: uint64(block.timestamp + 1 hours)})
+        );
+
+        vm.prank(subAgent);
+        agentWallet.execute(subId, address(disallowedService), 0.1 ether, abi.encodeCall(MockService.pay, ()));
+
+        assertTrue(permissionToken.frozen(subId));
+        assertFalse(permissionToken.frozen(childId));
+        assertTrue(permissionToken.isValid(childId)); // parent agent keeps working
+    }
 }
