@@ -170,6 +170,46 @@ describe('auto response', () => {
   })
 })
 
+describe('v2 freeze', () => {
+  const frozenCall = {
+    level: 'EXEC' as const,
+    actor: 'Hot Agent',
+    detail: 'P#2 → 0x00000000000000000000000000000000000000b1 · 0.0001 ETH',
+    note: 'target not in allowlist',
+    result: 'FROZEN' as const,
+    seconds: null,
+  }
+
+  it('says the wallet froze the permission in the blocked transaction', () => {
+    const root = new NodeEl('div') as unknown as HTMLElement
+    const screen = model()
+    screen.agents[0].permissions[0].status = 'FROZEN'
+    setWatchEvents([frozenCall])
+    renderAgents(root, screen)
+    const text = collected(root as unknown as NodeEl)
+    expect(text).toContain('That address is not on the allowlist, so the call was blocked.')
+    expect(text).toContain('The wallet froze this permission in the same transaction.')
+    expect(text).toContain('It stays frozen until the owner unfreezes or revokes it.')
+    expect(text).not.toContain('This permission is still active.')
+    setWatchEvents([])
+  })
+
+  it('adds the later revoke when the watcher escalates the freeze', () => {
+    const root = new NodeEl('div') as unknown as HTMLElement
+    const screen = model()
+    screen.agents[0].permissions[0].status = 'REVOKED'
+    setWatchEvents([
+      frozenCall,
+      { level: 'KILL', actor: 'Owner', detail: 'Permission #2 revoke', note: '', result: 'REVOKED', seconds: 2 },
+    ])
+    renderAgents(root, screen)
+    const text = collected(root as unknown as NodeEl)
+    expect(text).toContain('The wallet froze this permission in the same transaction.')
+    expect(text).toContain('The watcher revoked this permission 2s later.')
+    setWatchEvents([])
+  })
+})
+
 describe('K-T-11', () => {
   it('shows the warnings and Revoke agent for an allowance cold does not own', () => {
     const root = new NodeEl('div') as unknown as HTMLElement

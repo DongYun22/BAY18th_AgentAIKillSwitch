@@ -13,7 +13,7 @@ import { ethers } from "ethers";
 import { PERMISSION_TOKEN_ABI } from "./abis.js";
 import { runAuto, runExisting, watchEvents } from "./demoRuns.js";
 import { checklist, clearedCode, noteCaptured, overrideCall, qaCall, qaCode, qaLogs } from "./qaFixtures.js";
-import { SCENE_AGENT, SCENE_OWNER, playScenario, sceneBlock, sceneCall, sceneCode, sceneEvents, sceneHead, sceneLogs, sceneRevision, stageOpen } from "./scenarioBook.js";
+import { SCENE_AGENT, SCENE_OWNER, playScenario, playScenarioV2, sceneBlock, sceneCall, sceneCode, sceneEvents, sceneHead, sceneLogs, sceneRevision, stageOpen } from "./scenarioBook.js";
 
 export const COLD = "0xB6AF02FeEA21e2960A7C14FAf97bAdbE2E982836";
 export const PERMISSION_TOKEN = "0xA09511600787d4BF40A49CE3501af2C23d737584";
@@ -357,7 +357,7 @@ function startBridge() {
       res.end(JSON.stringify(events));
       return;
     }
-    if (req.method === "POST" && req.url === "/scenario") {
+    if (req.method === "POST" && (req.url === "/scenario" || req.url === "/scenario/v2")) {
       if (!scene) {
         res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
         res.end("Restart the mock wallet with npm run scene.\n");
@@ -368,7 +368,7 @@ function startBridge() {
         console.log(line.trimEnd());
         res.write(line);
       };
-      await playScenario(write);
+      await (req.url === "/scenario/v2" ? playScenarioV2 : playScenario)(write);
       res.end();
       return;
     }

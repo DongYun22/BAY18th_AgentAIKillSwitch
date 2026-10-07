@@ -11,6 +11,8 @@ import {
   sceneRevision,
   stageAuto,
   stageBlocked,
+  stageEscalated,
+  stageFrozen,
   stageManual,
   stageOpen,
 } from "./scenarioBook.js";
@@ -50,4 +52,29 @@ test("the scenario plays a blocked execute, then an auto revoke, on a new accoun
   assert.equal(ownerOf(1n), "revert");
   assert.equal(ownerOf(3n) === "revert", false);
   assert.equal(sceneEvents().filter((event) => event.seconds !== null).length, 1);
+});
+
+const validity = new ethers.Interface(["function isValid(uint256 tokenId) view returns (bool)"]);
+
+function isValid(id) {
+  const result = sceneCall({ to: PERMISSION_TOKEN, data: validity.encodeFunctionData("isValid", [id]) });
+  return validity.decodeFunctionResult("isValid", result)[0];
+}
+
+test("the v2 scenario freezes in the blocked call, then the watcher escalates", () => {
+  stageOpen();
+  assert.equal(isValid(2n), true);
+
+  stageFrozen();
+  assert.equal(sceneEvents()[0].result, "FROZEN");
+  assert.equal(isValid(2n), false);
+  assert.equal(ownerOf(2n) === "revert", false);
+  assert.equal(isValid(3n), true);
+
+  stageEscalated();
+  assert.equal(ownerOf(2n), "revert");
+  assert.equal(sceneEvents()[1].seconds, 2);
+
+  stageOpen();
+  assert.equal(isValid(2n), true);
 });
